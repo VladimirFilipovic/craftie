@@ -1,31 +1,27 @@
 package storage
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	sql "github.com/jmoiron/sqlx"
+	"github.com/vlad/craftie/internal/path"
 	"github.com/vlad/craftie/pkg/types"
+	_ "modernc.org/sqlite"
 )
 
-// SQLiteStorage implements session storage using SQLite
 type SQLiteStorage struct {
-	db   *sql.DB
+	*sql.DB
 	path string
 }
 
-// NewSQLiteStorage creates a new SQLite storage instance
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	// Expand home directory if needed
-	if dbPath[:2] == "~/" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, types.NewDatabaseErrorWithCause("failed to get home directory", err)
-		}
-		dbPath = filepath.Join(homeDir, dbPath[2:])
+	dbPath, err := path.ExpandPathWithHome(dbPath)
+
+	if err != nil {
+		return nil, types.NewDatabaseErrorWithCause("failed to get home directory", err)
 	}
 
 	// Create directory if it doesn't exist
@@ -34,18 +30,16 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 		return nil, types.NewDatabaseErrorWithCause("failed to create database directory", err)
 	}
 
-	// Open database connection
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_foreign_keys=on")
+	db, err := sql.Connect("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to open database", err)
 	}
 
 	storage := &SQLiteStorage{
-		db:   db,
-		path: dbPath,
+		db,
+		dbPath,
 	}
 
-	// Initialize database schema
 	if err := storage.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -70,20 +64,17 @@ func (s *SQLiteStorage) migrate() error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
-	if _, err := s.db.Exec(createSessionsTable); err != nil {
+	if _, err := s.Exec(createSessionsTable); err != nil {
 		return types.NewDatabaseErrorWithCause("failed to create sessions table", err)
 	}
 
 	// Create indexes for performance
 	indexes := []string{
-		"CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);",
-		"CREATE INDEX IF NOT EXISTS idx_sessions_synced ON sessions(synced_to_sheets);",
 		"CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_name);",
-		"CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(end_time) WHERE end_time IS NULL;",
 	}
 
 	for _, indexSQL := range indexes {
-		if _, err := s.db.Exec(indexSQL); err != nil {
+		if _, err := s.Exec(indexSQL); err != nil {
 			return types.NewDatabaseErrorWithCause("failed to create index", err)
 		}
 	}
@@ -96,33 +87,20 @@ func (s *SQLiteStorage) migrate() error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
-	if _, err := s.db.Exec(createConfigTable); err != nil {
+	if _, err := s.Exec(createConfigTable); err != nil {
 		return types.NewDatabaseErrorWithCause("failed to create config table", err)
 	}
 
 	return nil
 }
 
-// CreateSession creates a new session in the database
 func (s *SQLiteStorage) CreateSession(session *types.Session) error {
-	query := `
+	insertStatement := `
 	INSERT INTO sessions (start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	VALUES (:start_time, :end_time, :duration, :project_name, :notes, :synced_to_sheets, :created_at, :updated_at)`
 
-	var endTime interface{}
-	if session.EndTime != nil {
-		endTime = *session.EndTime
-	}
-
-	result, err := s.db.Exec(query,
-		session.StartTime,
-		endTime,
-		session.Duration,
-		session.ProjectName,
-		session.Notes,
-		session.SyncedToSheets,
-		session.CreatedAt,
-		session.UpdatedAt,
+	result, err := s.NamedExec(insertStatement,
+		session,
 	)
 
 	if err != nil {
@@ -138,7 +116,6 @@ func (s *SQLiteStorage) CreateSession(session *types.Session) error {
 	return nil
 }
 
-// UpdateSession updates an existing session
 func (s *SQLiteStorage) UpdateSession(session *types.Session) error {
 	query := `
 	UPDATE sessions 
@@ -153,7 +130,7 @@ func (s *SQLiteStorage) UpdateSession(session *types.Session) error {
 
 	session.UpdatedAt = time.Now()
 
-	result, err := s.db.Exec(query,
+	result, err := s.Exec(query,
 		session.StartTime,
 		endTime,
 		session.Duration,
@@ -180,34 +157,36 @@ func (s *SQLiteStorage) UpdateSession(session *types.Session) error {
 	return nil
 }
 
-// GetSessionByID retrieves a session by its ID
 func (s *SQLiteStorage) GetSessionByID(id int64) (*types.Session, error) {
-	query := `
-	SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at
-	FROM sessions WHERE id = ?`
-
-	row := s.db.QueryRow(query, id)
-	return s.scanSession(row)
+	var session types.Session
+	err := s.Get(&session, "SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at FROM sessions WHERE id = ?", id)
+	if err != nil {
+		// Check if it's a "no rows" error by trying to query again
+		var count int
+		err2 := s.Get(&count, "SELECT COUNT(*) FROM sessions WHERE id = ?", id)
+		if err2 == nil && count == 0 {
+			return nil, nil // No rows found
+		}
+		return nil, types.NewDatabaseErrorWithCause("failed to get session by ID", err)
+	}
+	return &session, nil
 }
 
-// GetActiveSession returns the currently active session (no end time)
 func (s *SQLiteStorage) GetActiveSession() (*types.Session, error) {
-	query := `
-	SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at
-	FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1`
-
-	row := s.db.QueryRow(query)
-	session, err := s.scanSession(row)
+	var session types.Session
+	err := s.Get(&session, "SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1")
 	if err != nil {
-		if err == sql.ErrNoRows {
+		// Check if it's a "no rows" error by trying to query again
+		var count int
+		err2 := s.Get(&count, "SELECT COUNT(*) FROM sessions WHERE end_time IS NULL")
+		if err2 == nil && count == 0 {
 			return nil, nil // No active session
 		}
-		return nil, err
+		return nil, types.NewDatabaseErrorWithCause("failed to get active session", err)
 	}
-	return session, nil
+	return &session, nil
 }
 
-// GetSessions retrieves sessions based on filter criteria
 func (s *SQLiteStorage) GetSessions(filter *types.SessionFilter) ([]*types.Session, error) {
 	query := "SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at FROM sessions WHERE 1=1"
 	args := []interface{}{}
@@ -238,54 +217,30 @@ func (s *SQLiteStorage) GetSessions(filter *types.SessionFilter) ([]*types.Sessi
 		}
 	}
 
-	rows, err := s.db.Query(query, args...)
+	var sessions []*types.Session
+	err := s.Select(&sessions, query, args...)
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to query sessions", err)
-	}
-	defer rows.Close()
-
-	var sessions []*types.Session
-	for rows.Next() {
-		session, err := s.scanSessionFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, session)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, types.NewDatabaseErrorWithCause("error iterating sessions", err)
 	}
 
 	return sessions, nil
 }
 
-// GetUnsyncedSessions returns sessions that haven't been synced to Google Sheets
 func (s *SQLiteStorage) GetUnsyncedSessions() ([]*types.Session, error) {
 	query := `
 	SELECT id, start_time, end_time, duration, project_name, notes, synced_to_sheets, created_at, updated_at
 	FROM sessions WHERE synced_to_sheets = FALSE AND end_time IS NOT NULL
 	ORDER BY start_time ASC`
 
-	rows, err := s.db.Query(query)
+	var sessions []*types.Session
+	err := s.Select(&sessions, query)
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to query unsynced sessions", err)
-	}
-	defer rows.Close()
-
-	var sessions []*types.Session
-	for rows.Next() {
-		session, err := s.scanSessionFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, session)
 	}
 
 	return sessions, nil
 }
 
-// MarkSessionsSynced marks multiple sessions as synced
 func (s *SQLiteStorage) MarkSessionsSynced(sessionIDs []int64) error {
 	if len(sessionIDs) == 0 {
 		return nil
@@ -304,7 +259,7 @@ func (s *SQLiteStorage) MarkSessionsSynced(sessionIDs []int64) error {
 
 	args = append([]interface{}{time.Now()}, args...)
 
-	_, err := s.db.Exec(query, args...)
+	_, err := s.Exec(query, args...)
 	if err != nil {
 		return types.NewDatabaseErrorWithCause("failed to mark sessions as synced", err)
 	}
@@ -312,9 +267,8 @@ func (s *SQLiteStorage) MarkSessionsSynced(sessionIDs []int64) error {
 	return nil
 }
 
-// DeleteSession deletes a session by ID
 func (s *SQLiteStorage) DeleteSession(id int64) error {
-	result, err := s.db.Exec("DELETE FROM sessions WHERE id = ?", id)
+	result, err := s.Exec("DELETE FROM sessions WHERE id = ?", id)
 	if err != nil {
 		return types.NewDatabaseErrorWithCause("failed to delete session", err)
 	}
@@ -331,21 +285,19 @@ func (s *SQLiteStorage) DeleteSession(id int64) error {
 	return nil
 }
 
-// GetSessionCount returns the total number of sessions
 func (s *SQLiteStorage) GetSessionCount() (int64, error) {
 	var count int64
-	err := s.db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count)
+	err := s.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count)
 	if err != nil {
 		return 0, types.NewDatabaseErrorWithCause("failed to get session count", err)
 	}
 	return count, nil
 }
 
-// GetSessionStats returns basic statistics about sessions
 func (s *SQLiteStorage) GetSessionStats() (*types.SessionStatus, error) {
 	// Get total sessions count
 	var totalSessions int64
-	err := s.db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&totalSessions)
+	err := s.Get(&totalSessions, "SELECT COUNT(*) FROM sessions")
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to get total sessions", err)
 	}
@@ -354,15 +306,25 @@ func (s *SQLiteStorage) GetSessionStats() (*types.SessionStatus, error) {
 	today := time.Now().Truncate(24 * time.Hour)
 	tomorrow := today.Add(24 * time.Hour)
 
-	var todaySessions int64
-	var todayDuration sql.NullInt64
-	err = s.db.QueryRow(`
-		SELECT COUNT(*), COALESCE(SUM(duration), 0) 
-		FROM sessions 
+	var todayDuration int64
+	err = s.Get(&todayDuration, `
+		SELECT COALESCE(SUM(duration), 0)
+		FROM sessions
 		WHERE start_time >= ? AND start_time < ?`,
-		today, tomorrow).Scan(&todaySessions, &todayDuration)
+		today, tomorrow)
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to get today's stats", err)
+	}
+
+	// Get today's sessions count
+	var todaySessions int64
+	err = s.Get(&todaySessions, `
+		SELECT COUNT(*)
+		FROM sessions
+		WHERE start_time >= ? AND start_time < ?`,
+		today, tomorrow)
+	if err != nil {
+		return nil, types.NewDatabaseErrorWithCause("failed to get today's sessions count", err)
 	}
 
 	// Get active session
@@ -373,110 +335,58 @@ func (s *SQLiteStorage) GetSessionStats() (*types.SessionStatus, error) {
 
 	// Get last sync time from config
 	var lastSyncTime time.Time
-	err = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'last_sync_time'").Scan(&lastSyncTime)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, types.NewDatabaseErrorWithCause("failed to get last sync time", err)
+	err = s.Get(&lastSyncTime, "SELECT value FROM app_config WHERE key = 'last_sync_time'")
+	if err != nil {
+		// Check if it's a "no rows" error by trying to query again
+		var count int
+		err2 := s.Get(&count, "SELECT COUNT(*) FROM app_config WHERE key = 'last_sync_time'")
+		if err2 == nil && count == 0 {
+			lastSyncTime = time.Time{} // Zero time if not found
+		} else {
+			return nil, types.NewDatabaseErrorWithCause("failed to get last sync time", err)
+		}
 	}
 
 	return &types.SessionStatus{
 		IsActive:       activeSession != nil,
 		CurrentSession: activeSession,
 		TotalSessions:  totalSessions,
-		TodayDuration:  uint64(todayDuration.Int64),
+		TodayDuration:  uint64(todayDuration),
 		TodaySessions:  todaySessions,
 		LastSyncTime:   lastSyncTime,
 	}, nil
 }
 
-// SetConfigValue sets a configuration value
 func (s *SQLiteStorage) SetConfigValue(key, value string) error {
 	query := `
 	INSERT OR REPLACE INTO app_config (key, value, updated_at)
 	VALUES (?, ?, ?)`
 
-	_, err := s.db.Exec(query, key, value, time.Now())
+	_, err := s.Exec(query, key, value, time.Now())
 	if err != nil {
 		return types.NewDatabaseErrorWithCause("failed to set config value", err)
 	}
 	return nil
 }
 
-// GetConfigValue gets a configuration value
 func (s *SQLiteStorage) GetConfigValue(key string) (string, error) {
 	var value string
-	err := s.db.QueryRow("SELECT value FROM app_config WHERE key = ?", key).Scan(&value)
+	err := s.Get(&value, "SELECT value FROM app_config WHERE key = ?", key)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
+		// Check if it's a "no rows" error by trying to query again
+		var count int
+		err2 := s.Get(&count, "SELECT COUNT(*) FROM app_config WHERE key = ?", key)
+		if err2 == nil && count == 0 {
+			return "", nil // Key doesn't exist
 		}
 		return "", types.NewDatabaseErrorWithCause("failed to get config value", err)
 	}
 	return value, nil
 }
 
-// Close closes the database connection
 func (s *SQLiteStorage) Close() error {
-	if s.db != nil {
-		return s.db.Close()
+	if s.Stats().OpenConnections > 0 {
+		return s.Close()
 	}
 	return nil
-}
-
-// scanSession scans a single row into a Session struct
-func (s *SQLiteStorage) scanSession(row *sql.Row) (*types.Session, error) {
-	var session types.Session
-	var endTime sql.NullTime
-
-	err := row.Scan(
-		&session.ID,
-		&session.StartTime,
-		&endTime,
-		&session.Duration,
-		&session.ProjectName,
-		&session.Notes,
-		&session.SyncedToSheets,
-		&session.CreatedAt,
-		&session.UpdatedAt,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, types.NewNotFoundError("session", "")
-		}
-		return nil, types.NewDatabaseErrorWithCause("failed to scan session", err)
-	}
-
-	if endTime.Valid {
-		session.EndTime = &endTime.Time
-	}
-
-	return &session, nil
-}
-
-// scanSessionFromRows scans a row from sql.Rows into a Session struct
-func (s *SQLiteStorage) scanSessionFromRows(rows *sql.Rows) (*types.Session, error) {
-	var session types.Session
-	var endTime sql.NullTime
-
-	err := rows.Scan(
-		&session.ID,
-		&session.StartTime,
-		&endTime,
-		&session.Duration,
-		&session.ProjectName,
-		&session.Notes,
-		&session.SyncedToSheets,
-		&session.CreatedAt,
-		&session.UpdatedAt,
-	)
-
-	if err != nil {
-		return nil, types.NewDatabaseErrorWithCause("failed to scan session from rows", err)
-	}
-
-	if endTime.Valid {
-		session.EndTime = &endTime.Time
-	}
-
-	return &session, nil
 }

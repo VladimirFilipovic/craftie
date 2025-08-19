@@ -1,0 +1,96 @@
+# Craftie Configuration File
+# This file contains all configuration options for Craftie
+
+google_sheets:
+  # Path to Google Service Account credentials JSON file
+  # Example: "/path/to/your/service-account.json"
+  credentials_file: "~/.craftie/service-account.json"
+
+  # Google Sheets spreadsheet ID (found in the URL)
+  # Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+  spreadsheet_id: ""
+
+  # Name of the sheet/tab to write to
+  sheet_name: "CraftTime"
+
+  # How often to sync data to Google Sheets
+  # Valid units: ns, us, ms, s, m, h
+  sync_interval: "15m"
+
+  # Enable/disable Google Sheets integration
+  enabled: true
+
+  # Number of retry attempts for failed API calls
+  retry_attempts: 3
+
+  # Delay between retry attempts
+  # Valid units: ns, us, ms, s, m, h
+  retry_delay: "5s"
+
+notifications:
+  # Enable/disable all notifications
+  enabled: true
+
+  # How often to show reminder notifications
+  # Valid units: ns, us, ms, s, m, h
+  reminder_interval: "1h"
+
+  # Show system tray icon
+  show_tray_icon: true
+
+  # Enable notification sounds
+  sound_enabled: false
+
+  # Message template for reminders (%s will be replaced with elapsed time)
+  reminder_message: "Craftie is tracking your time - %s elapsed"
+
+storage:
+  # Path to SQLite database file
+  # Example: "/path/to/your/database.db"
+  database_path: "~/.craftie/sessions.db"
+
+  # Enable automatic database backups
+  backup_enabled: true
+
+  # How often to create backups
+  # Valid units: ns, us, ms, s, m, h
+  backup_interval: "24h"
+
+  # Maximum number of sessions to keep (0 = unlimited)
+  max_sessions: 10000
+
+  # Enable database compression
+  compress_db: false
+
+daemon:
+  # Path to Unix socket for IPC communication
+  socket_path: "~/.craftie/daemon.sock"
+
+  # Path to PID file
+  pid_file: "~/.craftie/craftie.pid"
+
+  # Path to daemon log file
+  log_file: "~/.craftie/craftie.log"
+
+  # Auto-start daemon on system boot
+  auto_start: false
+
+logging:
+  # Log level: trace, debug, info, warn, error, fatal, panic
+  level: "info"
+
+  # Log format: text or json
+  format: "text"
+
+  # Path to log file (empty for stdout)
+  # Example: "/path/to/your/app.log"
+  output_file: "~/.craftie/craftie.log"
+
+  # Maximum log file size in MB
+  max_size: 10
+
+  # Maximum number of backup log files
+  max_backups: 3
+
+  # Maximum age of log files in days
+  max_age: 30

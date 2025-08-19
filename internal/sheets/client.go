@@ -14,14 +14,12 @@ import (
 	"github.com/vlad/craftie/pkg/types"
 )
 
-// Client handles Google Sheets API operations
-type Client struct {
-	service *sheets.Service
-	config  *config.Manager
+type SheetsClient struct {
+	sheetsService *sheets.Service
+	config        *config.ConfigManager
 }
 
-// NewClient creates a new Google Sheets client
-func NewClient(configManager *config.Manager) (*Client, error) {
+func NewSheetsClient(configManager *config.ConfigManager) (*SheetsClient, error) {
 	cfg := configManager.GetConfig()
 	if !cfg.GoogleSheets.Enabled {
 		return nil, &types.CraftieError{
@@ -30,7 +28,7 @@ func NewClient(configManager *config.Manager) (*Client, error) {
 		}
 	}
 
-	// Read service account credentials
+	// TODO: Read this from the console when the app boots
 	credsData, err := os.ReadFile(cfg.GoogleSheets.CredentialsFile)
 	if err != nil {
 		return nil, &types.CraftieError{
@@ -40,7 +38,6 @@ func NewClient(configManager *config.Manager) (*Client, error) {
 		}
 	}
 
-	// Create OAuth2 config
 	config, err := google.JWTConfigFromJSON(credsData, sheets.SpreadsheetsScope)
 	if err != nil {
 		return nil, &types.CraftieError{
@@ -50,10 +47,8 @@ func NewClient(configManager *config.Manager) (*Client, error) {
 		}
 	}
 
-	// Create HTTP client
 	client := config.Client(context.Background())
 
-	// Create Sheets service
 	srv, err := sheets.NewService(context.Background(), option.WithHTTPClient(client))
 	if err != nil {
 		return nil, &types.CraftieError{
@@ -63,14 +58,13 @@ func NewClient(configManager *config.Manager) (*Client, error) {
 		}
 	}
 
-	return &Client{
-		service: srv,
-		config:  configManager,
+	return &SheetsClient{
+		sheetsService: srv,
+		config:        configManager,
 	}, nil
 }
 
-// WriteSession writes a session to Google Sheets
-func (c *Client) WriteSession(ctx context.Context, session *types.Session) error {
+func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session) error {
 	cfg := c.config.GetConfig()
 
 	// Prepare the data to write
@@ -85,7 +79,7 @@ func (c *Client) WriteSession(ctx context.Context, session *types.Session) error
 	}
 
 	// Write to spreadsheet
-	_, err := c.service.Spreadsheets.Values.Update(
+	_, err := c.sheetsService.Spreadsheets.Values.Update(
 		cfg.GoogleSheets.SpreadsheetID,
 		fmt.Sprintf("%s!A2:E2", cfg.GoogleSheets.SheetName),
 		&sheets.ValueRange{
@@ -104,7 +98,7 @@ func (c *Client) WriteSession(ctx context.Context, session *types.Session) error
 }
 
 // WriteSessions writes multiple sessions to Google Sheets
-func (c *Client) WriteSessions(ctx context.Context, sessions []*types.Session) error {
+func (c *SheetsClient) WriteSessions(ctx context.Context, sessions []*types.Session) error {
 	cfg := c.config.GetConfig()
 
 	// Prepare batch data
@@ -120,7 +114,7 @@ func (c *Client) WriteSessions(ctx context.Context, sessions []*types.Session) e
 	}
 
 	// Write to spreadsheet in batch
-	_, err := c.service.Spreadsheets.Values.Update(
+	_, err := c.sheetsService.Spreadsheets.Values.Update(
 		cfg.GoogleSheets.SpreadsheetID,
 		fmt.Sprintf("%s!A2:E%d", cfg.GoogleSheets.SheetName, len(values)+1),
 		&sheets.ValueRange{
@@ -139,11 +133,11 @@ func (c *Client) WriteSessions(ctx context.Context, sessions []*types.Session) e
 }
 
 // TestConnection tests the connection to Google Sheets
-func (c *Client) TestConnection(ctx context.Context) error {
+func (c *SheetsClient) TestConnection(ctx context.Context) error {
 	cfg := c.config.GetConfig()
 
 	// Try to read spreadsheet metadata
-	_, err := c.service.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
+	_, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
 	if err != nil {
 		return &types.CraftieError{
 			Code:    types.ErrCodeNetwork,
@@ -155,11 +149,10 @@ func (c *Client) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-// GetSpreadsheetInfo returns information about the configured spreadsheet
-func (c *Client) GetSpreadsheetInfo(ctx context.Context) (*sheets.Spreadsheet, error) {
+func (c *SheetsClient) GetSpreadsheetInfo(ctx context.Context) (*sheets.Spreadsheet, error) {
 	cfg := c.config.GetConfig()
 
-	spreadsheet, err := c.service.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
+	spreadsheet, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
 	if err != nil {
 		return nil, &types.CraftieError{
 			Code:    types.ErrCodeNetwork,

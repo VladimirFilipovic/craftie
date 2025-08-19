@@ -7,29 +7,24 @@ import (
 	"github.com/vlad/craftie/pkg/types"
 )
 
-// Manager implements the SessionManager interface
 type Manager struct {
 	storage *storage.SQLiteStorage
 }
 
-// NewManager creates a new session manager
 func NewManager(storage *storage.SQLiteStorage) *Manager {
 	return &Manager{
 		storage: storage,
 	}
 }
 
-// StartSession creates and starts a new session
 // If there's an active session, it will be stopped automatically
 func (m *Manager) StartSession(projectName, notes string) (*types.Session, error) {
-	// Check if there's an active session and stop it
 	activeSession, err := m.storage.GetActiveSession()
 	if err != nil {
 		return nil, err
 	}
 
 	if activeSession != nil {
-		// Stop the active session
 		activeSession.Stop()
 		if err := m.storage.UpdateSession(activeSession); err != nil {
 			return nil, err
@@ -55,7 +50,6 @@ func (m *Manager) StartSession(projectName, notes string) (*types.Session, error
 	return session, nil
 }
 
-// StopSession stops the current active session
 func (m *Manager) StopSession() (*types.Session, error) {
 	activeSession, err := m.storage.GetActiveSession()
 	if err != nil {
@@ -82,7 +76,7 @@ func (m *Manager) GetCurrentSession() (*types.Session, error) {
 	return m.storage.GetActiveSession()
 }
 
-// GetStatus returns the current system status
+// TODO move this to some Stats Manager.
 // GetStatus returns the current session status
 func (m *Manager) GetStatus() (*types.SessionStatus, error) {
 	active, err := m.GetCurrentSession()
@@ -119,27 +113,21 @@ func (m *Manager) GetStatus() (*types.SessionStatus, error) {
 	}, nil
 }
 
-// GetSessions returns sessions based on filter criteria
 func (m *Manager) GetSessions(filter *types.SessionFilter) ([]*types.Session, error) {
 	return m.storage.GetSessions(filter)
 }
 
-// GetSessionByID returns a specific session by ID
 func (m *Manager) GetSessionByID(id int64) (*types.Session, error) {
 	return m.storage.GetSessionByID(id)
 }
 
-// UpdateSession updates an existing session
 func (m *Manager) UpdateSession(session *types.Session) error {
 	return m.storage.UpdateSession(session)
 }
 
-// DeleteSession deletes a session by ID
 func (m *Manager) DeleteSession(id int64) error {
 	return m.storage.DeleteSession(id)
 }
-
-// GetDailySummary returns daily summary for a date range
 
 func (m *Manager) GetDailySummary(startDate, endDate time.Time) ([]*types.SessionSummary, error) {
 	// Get all sessions in the date range
@@ -189,13 +177,12 @@ func (m *Manager) GetDailySummary(startDate, endDate time.Time) ([]*types.Sessio
 		}
 	}
 
-	// Convert map to slice and sort by date
 	var summaries []*types.SessionSummary
 	for _, summary := range dailyMap {
 		summaries = append(summaries, summary)
 	}
 
-	// Sort summaries by date (newest first)
+	// (newest first)
 	for i := 0; i < len(summaries)-1; i++ {
 		for j := i + 1; j < len(summaries); j++ {
 			if summaries[i].Date.Before(summaries[j].Date) {
@@ -207,7 +194,6 @@ func (m *Manager) GetDailySummary(startDate, endDate time.Time) ([]*types.Sessio
 	return summaries, nil
 }
 
-// AutoSave saves the current session progress (updates duration)
 func (m *Manager) AutoSave() error {
 	activeSession, err := m.storage.GetActiveSession()
 	if err != nil {
@@ -215,22 +201,19 @@ func (m *Manager) AutoSave() error {
 	}
 
 	if activeSession == nil {
-		return nil // No active session to save
+		return nil
 	}
 
-	// Update duration and timestamp
 	activeSession.Duration = activeSession.GetDuration()
 	activeSession.UpdatedAt = time.Now()
 
 	return m.storage.UpdateSession(activeSession)
 }
 
-// GetUnsyncedSessions returns sessions that haven't been synced to Google Sheets
 func (m *Manager) GetUnsyncedSessions() ([]*types.Session, error) {
 	return m.storage.GetUnsyncedSessions()
 }
 
-// MarkSessionsSynced marks multiple sessions as synced
 func (m *Manager) MarkSessionsSynced(sessionIDs []int64) error {
 	return m.storage.MarkSessionsSynced(sessionIDs)
 }

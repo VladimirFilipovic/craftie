@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// Session represents a craft time tracking session
 type Session struct {
 	ID             int64      `json:"id" db:"id"`
 	StartTime      time.Time  `json:"start_time" db:"start_time"`
@@ -17,7 +16,6 @@ type Session struct {
 	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }
 
-// IsActive returns true if the session is currently active (no end time)
 func (s *Session) IsActive() bool {
 	return s.EndTime == nil
 }
@@ -28,7 +26,6 @@ func (s *Session) GetDuration() uint64 {
 	if s.EndTime != nil {
 		return s.Duration
 	}
-	// Session is active, calculate current duration
 	return uint64(time.Since(s.StartTime).Seconds())
 }
 
@@ -40,7 +37,6 @@ func (s *Session) Stop() {
 	s.UpdatedAt = now
 }
 
-// SessionStatus represents the current status of the tracking system
 type SessionStatus struct {
 	IsActive       bool      `json:"is_active"`
 	CurrentSession *Session  `json:"current_session,omitempty"`
@@ -67,36 +63,27 @@ type SessionFilter struct {
 	Offset      int        `json:"offset,omitempty"`
 }
 
-// SessionManager interface defines session management operations
 type SessionManager interface {
 	// StartSession creates and starts a new session
 	// If there's an active session, it will be stopped automatically
 	StartSession(projectName, notes string) (*Session, error)
 
-	// StopSession stops the current active session
 	StopSession() (*Session, error)
 
-	// GetCurrentSession returns the currently active session, if any
 	GetCurrentSession() (*Session, error)
 
 	// GetStatus returns the current system status
 	GetStatus() (*SessionStatus, error)
 
-	// GetSessions returns sessions based on filter criteria
 	GetSessions(filter *SessionFilter) ([]*Session, error)
 
-	// GetSessionByID returns a specific session by ID
 	GetSessionByID(id int64) (*Session, error)
 
-	// UpdateSession updates an existing session
 	UpdateSession(session *Session) error
 
-	// DeleteSession deletes a session by ID
 	DeleteSession(id int64) error
 
-	// GetDailySummary returns daily summary for a date range
 	GetDailySummary(startDate, endDate time.Time) ([]*SessionSummary, error)
 
-	// GetSessionCount returns the total number of sessions
 	GetSessionCount() (int64, error)
 }

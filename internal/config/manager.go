@@ -6,37 +6,47 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/vlad/craftie/internal/path"
 	"github.com/vlad/craftie/pkg/types"
 )
 
-// Manager handles configuration loading and management
-type Manager struct {
+type ConfigManager struct {
 	config *types.Config
 	viper  *viper.Viper
 }
 
-// NewManager creates a new configuration manager
-func NewManager() *Manager {
-	return &Manager{
+func NewConfigManager() *ConfigManager {
+	return &ConfigManager{
 		viper: viper.New(),
 	}
 }
 
-// Load loads configuration from file and environment variables
-func (m *Manager) Load(configPath string) error {
+/*
+	 Loads configuration from file and environment variables using viper.
+	 Viper uses the following precedence order.
+	 Each item takes precedence over the item below it:
+		explicit call to Set
+		flag
+		env
+		config
+		key/value store
+	  default
+*/
+func (m *ConfigManager) Load(configPath string) error {
 	// Set default configuration
 	m.config = types.DefaultConfig()
 
-	// Expand home directory if needed
-	if configPath[:2] == "~/" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return types.NewValidationError("failed to get home directory")
+	configPath, err := path.ExpandPathWithHome(configPath)
+
+	if err != nil {
+		return &types.CraftieError{
+			Code:    types.ErrCodeConfig,
+			Message: "Path failed to expand",
+			Cause:   err,
 		}
-		configPath = filepath.Join(homeDir, configPath[2:])
 	}
 
-	// Set up viper
+	// Set up config file
 	m.viper.SetConfigFile(configPath)
 	m.viper.SetConfigType("yaml")
 
@@ -45,12 +55,6 @@ func (m *Manager) Load(configPath string) error {
 	m.viper.AutomaticEnv()
 	m.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Create config directory if it doesn't exist
-	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return types.NewValidationError("failed to create config directory: " + err.Error())
-	}
-
 	// Try to read config file
 	if err := m.viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -58,9 +62,8 @@ func (m *Manager) Load(configPath string) error {
 			if err := m.createDefaultConfig(configPath); err != nil {
 				return err
 			}
-		} else {
-			return types.NewValidationError("failed to read config file: " + err.Error())
 		}
+		return types.NewValidationError("failed to read config file: " + err.Error())
 	}
 
 	// Unmarshal into config struct
@@ -79,20 +82,19 @@ func (m *Manager) Load(configPath string) error {
 	return nil
 }
 
-// GetConfig returns the loaded configuration
-func (m *Manager) GetConfig() *types.Config {
+func (m *ConfigManager) GetConfig() *types.Config {
 	return m.config
 }
 
-// Save saves the current configuration to file
-func (m *Manager) Save(configPath string) error {
-	// Expand home directory if needed
-	if configPath[:2] == "~/" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return types.NewValidationError("failed to get home directory")
+func (m *ConfigManager) Save(configPath string) error {
+	configPath, err := path.ExpandPathWithHome(configPath)
+
+	if err != nil {
+		return &types.CraftieError{
+			Code:    types.ErrCodeConfig,
+			Message: "Path issues",
+			Cause:   err,
 		}
-		configPath = filepath.Join(homeDir, configPath[2:])
 	}
 
 	m.viper.SetConfigFile(configPath)
@@ -100,19 +102,19 @@ func (m *Manager) Save(configPath string) error {
 }
 
 // Set sets a configuration value
-func (m *Manager) Set(key string, value interface{}) {
+func (m *ConfigManager) Set(key string, value interface{}) {
 	m.viper.Set(key, value)
 	// Re-unmarshal to update the config struct
 	m.viper.Unmarshal(m.config)
 }
 
 // Get gets a configuration value
-func (m *Manager) Get(key string) interface{} {
+func (m *ConfigManager) Get(key string) interface{} {
 	return m.viper.Get(key)
 }
 
 // createDefaultConfig creates a default configuration file
-func (m *Manager) createDefaultConfig(configPath string) error {
+func (m *ConfigManager) createDefaultConfig(configPath string) error {
 	// Set default values in viper
 	m.setDefaults()
 
@@ -125,7 +127,7 @@ func (m *Manager) createDefaultConfig(configPath string) error {
 }
 
 // setDefaults sets default values in viper
-func (m *Manager) setDefaults() {
+func (m *ConfigManager) setDefaults() {
 	defaults := types.DefaultConfig()
 
 	// Google Sheets defaults
@@ -167,7 +169,7 @@ func (m *Manager) setDefaults() {
 }
 
 // expandPaths expands ~ to home directory in file paths
-func (m *Manager) expandPaths() {
+func (m *ConfigManager) expandPaths() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return // Skip expansion if we can't get home dir
@@ -201,7 +203,7 @@ func (m *Manager) expandPaths() {
 }
 
 // ValidateGoogleSheetsConfig validates Google Sheets configuration
-func (m *Manager) ValidateGoogleSheetsConfig() error {
+func (m *ConfigManager) ValidateGoogleSheetsConfig() error {
 	if !m.config.GoogleSheets.Enabled {
 		return nil // Skip validation if disabled
 	}

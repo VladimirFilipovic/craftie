@@ -14,14 +14,14 @@ import (
 
 // Manager handles synchronization between local storage and Google Sheets
 type Manager struct {
-	configManager *config.Manager
-	sheetsClient  *sheets.Client
+	configManager *config.ConfigManager
+	sheetsClient  *sheets.SheetsClient
 	storage       *storage.SQLiteStorage
 }
 
 // NewManager creates a new synchronization manager
-func NewManager(configManager *config.Manager, storage *storage.SQLiteStorage) (*Manager, error) {
-	sheetsClient, err := sheets.NewClient(configManager)
+func NewManager(configManager *config.ConfigManager, storage *storage.SQLiteStorage) (*Manager, error) {
+	sheetsClient, err := sheets.NewSheetsClient(configManager)
 	if err != nil {
 		return nil, err
 	}
