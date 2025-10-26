@@ -35,7 +35,7 @@ func NewManager(configManager *config.ConfigManager, storage *storage.SQLiteStor
 
 // SyncUnsyncedSessions synchronizes all unsynced sessions to Google Sheets
 func (m *Manager) SyncUnsyncedSessions(ctx context.Context) error {
-	cfg := m.configManager.GetConfig()
+	cfg := m.configManager.Config()
 	if !cfg.GoogleSheets.Enabled {
 		return nil // Skip sync if disabled
 	}
@@ -83,7 +83,7 @@ func (m *Manager) SyncUnsyncedSessions(ctx context.Context) error {
 
 // SyncActiveSession synchronizes the currently active session (for progress updates)
 func (m *Manager) SyncActiveSession(ctx context.Context) error {
-	cfg := m.configManager.GetConfig()
+	cfg := m.configManager.Config()
 	if !cfg.GoogleSheets.Enabled {
 		return nil
 	}
@@ -104,7 +104,7 @@ func (m *Manager) SyncActiveSession(ctx context.Context) error {
 
 // TestConnection tests the connection to Google Sheets
 func (m *Manager) TestConnection(ctx context.Context) error {
-	cfg := m.configManager.GetConfig()
+	cfg := m.configManager.Config()
 	if !cfg.GoogleSheets.Enabled {
 		return &types.CraftieError{
 			Code:    types.ErrCodeConfig,
@@ -117,7 +117,7 @@ func (m *Manager) TestConnection(ctx context.Context) error {
 
 // GetSpreadsheetInfo returns information about the configured spreadsheet
 func (m *Manager) GetSpreadsheetInfo(ctx context.Context) (*sheetsAPI.Spreadsheet, error) {
-	cfg := m.configManager.GetConfig()
+	cfg := m.configManager.Config()
 	if !cfg.GoogleSheets.Enabled {
 		return nil, &types.CraftieError{
 			Code:    types.ErrCodeConfig,

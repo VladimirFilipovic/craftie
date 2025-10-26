@@ -20,7 +20,7 @@ type SheetsClient struct {
 }
 
 func NewSheetsClient(configManager *config.ConfigManager) (*SheetsClient, error) {
-	cfg := configManager.GetConfig()
+	cfg := configManager.Config()
 	if !cfg.GoogleSheets.Enabled {
 		return nil, &types.CraftieError{
 			Code:    types.ErrCodeConfig,
@@ -65,13 +65,20 @@ func NewSheetsClient(configManager *config.ConfigManager) (*SheetsClient, error)
 }
 
 func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session) error {
-	cfg := c.config.GetConfig()
+	cfg := c.config.Config()
 
 	// Prepare the data to write
+	var endTime string
+	if session.EndTime != nil {
+		endTime = session.EndTime.Format("2006-01-02 15:04:05")
+	} else {
+		endTime = "ONGOING"
+	}
+
 	values := [][]interface{}{
 		{
 			session.StartTime.Format("2006-01-02 15:04:05"),
-			session.EndTime.Format("2006-01-02 15:04:05"),
+			endTime,
 			time.Duration(session.Duration) * time.Second,
 			session.ProjectName,
 			session.Notes,
@@ -88,8 +95,8 @@ func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session)
 	).ValueInputOption("RAW").Do()
 	if err != nil {
 		return &types.CraftieError{
-			Code:    types.ErrCodeConfig,
-			Message: "Google Sheets integration is disabled",
+			Code:    types.ErrCodeNetwork,
+			Message: "failed to write session to Google Sheets",
 			Cause:   err,
 		}
 	}
@@ -99,14 +106,21 @@ func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session)
 
 // WriteSessions writes multiple sessions to Google Sheets
 func (c *SheetsClient) WriteSessions(ctx context.Context, sessions []*types.Session) error {
-	cfg := c.config.GetConfig()
+	cfg := c.config.Config()
 
 	// Prepare batch data
 	values := make([][]interface{}, 0, len(sessions))
 	for _, session := range sessions {
+		var endTime string
+		if session.EndTime != nil {
+			endTime = session.EndTime.Format("2006-01-02 15:04:05")
+		} else {
+			endTime = "ONGOING"
+		}
+
 		values = append(values, []interface{}{
 			session.StartTime.Format("2006-01-02 15:04:05"),
-			session.EndTime.Format("2006-01-02 15:04:05"),
+			endTime,
 			time.Duration(session.Duration) * time.Second,
 			session.ProjectName,
 			session.Notes,
@@ -134,7 +148,7 @@ func (c *SheetsClient) WriteSessions(ctx context.Context, sessions []*types.Sess
 
 // TestConnection tests the connection to Google Sheets
 func (c *SheetsClient) TestConnection(ctx context.Context) error {
-	cfg := c.config.GetConfig()
+	cfg := c.config.Config()
 
 	// Try to read spreadsheet metadata
 	_, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
@@ -150,7 +164,7 @@ func (c *SheetsClient) TestConnection(ctx context.Context) error {
 }
 
 func (c *SheetsClient) GetSpreadsheetInfo(ctx context.Context) (*sheets.Spreadsheet, error) {
-	cfg := c.config.GetConfig()
+	cfg := c.config.Config()
 
 	spreadsheet, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
 	if err != nil {

@@ -1,9 +1,176 @@
-package types
+package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/spf13/viper"
+	"github.com/vlad/craftie/internal/path"
 )
+
+type ConfigManager struct {
+	Config *Config
+	viper  *viper.Viper
+}
+
+func NewConfigManager(configPath string) (*ConfigManager, error) {
+	viper := viper.New()
+
+	config, err := loadConfig(configPath, viper)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize config manager: %w", err)
+	}
+
+	return &ConfigManager{
+		viper:  viper,
+		Config: config,
+	}, nil
+}
+
+func loadConfig(configPath string, viper *viper.Viper) (*Config, error) {
+	var config *Config
+
+	if configPath == "" {
+		config = defaultConfig()
+	}
+
+	if configPath != "" {
+		fullConfigPath, err := path.ExpandPathWithHome(configPath)
+
+		if err != nil {
+			return nil, err
+		}
+
+		viper.AddConfigPath(fullConfigPath)
+		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		viper.AutomaticEnv()
+
+		if err := viper.ReadInConfig(); err != nil {
+			return nil, err
+		}
+
+		if err := viper.Unmarshal(config); err != nil {
+			return nil, err
+		}
+	}
+
+	expandPaths(config)
+
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
+func (m *ConfigManager) Set(key string, value interface{}) {
+	m.viper.Set(key, value)
+	// Re-unmarshal to update the config struct
+	m.viper.Unmarshal(m.Config)
+}
+
+func (m *ConfigManager) Get(key string) interface{} {
+	return m.viper.Get(key)
+}
+
+func expandPaths(conf *Config) error {
+	// Expand Google Sheets credentials file path
+	expandedPath, err := path.ExpandPathWithHome(conf.GoogleSheets.CredentialsFile)
+	if err != nil {
+		return err
+	}
+	conf.GoogleSheets.CredentialsFile = expandedPath
+
+	// Expand storage database path
+	expandedPath, err = path.ExpandPathWithHome(conf.Storage.DatabasePath)
+	if err != nil {
+		return err
+	}
+	conf.Storage.DatabasePath = expandedPath
+
+	// Expand daemon paths
+	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.SocketPath)
+	if err != nil {
+		return err
+	}
+	conf.Daemon.SocketPath = expandedPath
+	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.PidFile)
+	if err != nil {
+		return err
+	}
+	conf.Daemon.PidFile = expandedPath
+	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.LogFile)
+	if err != nil {
+		return err
+	}
+	conf.Daemon.LogFile = expandedPath
+
+	// Expand logging output file path
+	expandedPath, err = path.ExpandPathWithHome(conf.Logging.OutputFile)
+	if err != nil {
+		return err
+	}
+	conf.Logging.OutputFile = expandedPath
+
+	return nil
+}
+
+func defaultConfigPath() string {
+	return "~/"
+}
+
+// CraftieError represents a base error type for the application
+type CraftieError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Cause   error  `json:"cause,omitempty"`
+}
+
+func (e *CraftieError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("%s: %s (caused by: %v)", e.Code, e.Message, e.Cause)
+	}
+	return fmt.Sprintf("%s: %s", e.Code, e.Message)
+}
+
+func (e *CraftieError) Unwrap() error {
+	return e.Cause
+}
+
+// Error codes
+const (
+	ErrCodeValidation    = "VALIDATION_ERROR"
+	ErrCodeDatabase      = "DATABASE_ERROR"
+	ErrCodeNetwork       = "NETWORK_ERROR"
+	ErrCodeAuth          = "AUTH_ERROR"
+	ErrCodeConfig        = "CONFIG_ERROR"
+	ErrCodeSession       = "SESSION_ERROR"
+	ErrCodeDaemon        = "DAEMON_ERROR"
+	ErrCodeNotification  = "NOTIFICATION_ERROR"
+	ErrCodeSync          = "SYNC_ERROR"
+	ErrCodeFileSystem    = "FILESYSTEM_ERROR"
+	ErrCodeNotFound      = "NOT_FOUND"
+	ErrCodeAlreadyExists = "ALREADY_EXISTS"
+	ErrCodePermission    = "PERMISSION_ERROR"
+	ErrCodeTimeout       = "TIMEOUT_ERROR"
+)
+
+// ValidationError represents a configuration or input validation error
+type ValidationError struct {
+	*CraftieError
+}
+
+func NewValidationError(message string) *ValidationError {
+	return &ValidationError{
+		CraftieError: &CraftieError{
+			Code:    ErrCodeValidation,
+			Message: message,
+		},
+	}
+}
 
 // Config represents the application configuration
 type Config struct {
@@ -61,15 +228,14 @@ type LoggingConfig struct {
 	MaxAge     int    `yaml:"max_age" mapstructure:"max_age"`         // days
 }
 
-// DefaultConfig returns a configuration with sensible defaults
-func DefaultConfig() *Config {
+func defaultConfig() *Config {
 	return &Config{
 		GoogleSheets: GoogleSheetsConfig{
 			CredentialsFile: "~/.craftie/service-account.json",
 			SpreadsheetID:   "",
 			SheetName:       "CraftTime",
 			SyncInterval:    15 * time.Minute,
-			Enabled:         true,
+			Enabled:         false,
 			RetryAttempts:   3,
 			RetryDelay:      5 * time.Second,
 		},
@@ -94,8 +260,9 @@ func DefaultConfig() *Config {
 			AutoStart:  false,
 		},
 		Logging: LoggingConfig{
-			Level:      "info",
-			Format:     "text",
+			Level:  "info",
+			Format: "text",
+			// TODO: Wont log into file. Gonna be streaming to stdout instead. And call it a day
 			OutputFile: "~/.craftie/craftie.log",
 			MaxSize:    10, // 10MB
 			MaxBackups: 3,
@@ -104,7 +271,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Validate checks if the configuration is valid
 func (c *Config) Validate() error {
 	if c.GoogleSheets.Enabled {
 		if c.GoogleSheets.CredentialsFile == "" {
