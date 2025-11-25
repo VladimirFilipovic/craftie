@@ -15,8 +15,9 @@ func main() {
 		Name:                   "craftie",
 		Usage:                  "A time tracking application for crafters",
 		UseShortOptionHandling: true,
-		Version:                "0.0.1-beta",
-		DefaultCommand:         "start",
+		// TODO: read from git tree
+		Version:        "0.0.1-beta",
+		DefaultCommand: "start",
 		Commands: []*cli.Command{
 			{
 				Name:    "start",
@@ -39,12 +40,6 @@ func main() {
 						Name:     "notes",
 						Aliases:  []string{"n"},
 						Usage:    "Session notes",
-						Required: false,
-					},
-					&cli.BoolFlag{
-						Name:     "daemon",
-						Aliases:  []string{"d"},
-						Usage:    "Start craftie as a background service (recommended)",
 						Required: false,
 					},
 				},
@@ -95,22 +90,6 @@ func main() {
 			// 	Action:  exitDaemon,
 			// },
 		},
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Usage:   "Configuration file path",
-			},
-			&cli.StringFlag{
-				Name:    "database",
-				Aliases: []string{"d"},
-				Usage:   "Database file path",
-			},
-			&cli.BoolFlag{
-				Name:  "verbose",
-				Usage: "Verbose output",
-			},
-		},
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
@@ -123,18 +102,17 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	notes := cmd.String("notes")
 	configPath := cmd.String("config")
 
-	configManager, err := config.NewConfigManager(
-		configPath,
-	)
+	configManager := config.NewConfigManager()
 
+	cfg, err := configManager.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize config manager: %w", err)
 	}
 
 	fmt.Printf("🚀 Starting session for project '%s'...\n", projectName)
 	fmt.Println("Configuration loaded from:", configPath)
-	fmt.Printf("Print cfg %%v\n", configManager.Config)
-	fmt.Println("Notes", notes)
+	fmt.Println("Config", cfg)
+	fmt.Println("Notes:", notes)
 
 	return nil
 

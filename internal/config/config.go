@@ -3,11 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/vlad/craftie/internal/path"
+	"github.com/vlad/craftie/internal/pkg"
+	"gopkg.in/yaml.v3"
 )
 
 type ConfigManager struct {
@@ -15,46 +18,56 @@ type ConfigManager struct {
 	viper  *viper.Viper
 }
 
-func NewConfigManager(configPath string) (*ConfigManager, error) {
+func NewConfigManager() *ConfigManager {
 	viper := viper.New()
 
-	config, err := loadConfig(configPath, viper)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize config manager: %w", err)
-	}
-
 	return &ConfigManager{
-		viper:  viper,
-		Config: config,
-	}, nil
+		viper: viper,
+	}
 }
 
-func loadConfig(configPath string, viper *viper.Viper) (*Config, error) {
+func (cm *ConfigManager) LoadConfig(configPath string) (*Config, error) {
 	var config *Config
 
+	generateDefaultConfig := false
 	if configPath == "" {
-		config = defaultConfig()
+		configPath = DefaultConfigPath()
+		generateDefaultConfig = true
 	}
 
-	if configPath != "" {
-		fullConfigPath, err := path.ExpandPathWithHome(configPath)
+	fullConfigPath, err := pkg.GetExpandedPathWithHome(configPath)
+	if err != nil {
+		return nil, err
+	}
 
-		if err != nil {
-			return nil, err
-		}
-
-		viper.AddConfigPath(fullConfigPath)
-		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-		viper.AutomaticEnv()
-
+	// load existing config file
+	if !generateDefaultConfig {
+		// Load existing config file
+		cm.viper.AddConfigPath(filepath.Dir(fullConfigPath))
+		cm.viper.SetConfigName(filepath.Base(fullConfigPath))
+		cm.viper.SetConfigType("yaml")
+		cm.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		cm.viper.AutomaticEnv()
 		if err := viper.ReadInConfig(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 
-		if err := viper.Unmarshal(config); err != nil {
-			return nil, err
+		config = defaultConfig()
+		if err := cm.viper.Unmarshal(config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 		}
+
+	}
+
+	// When no config path is provided or default configPath is provided
+	// check if default config file exists and if not create it with sensible values
+	if _, err := os.Stat(fullConfigPath); generateDefaultConfig && os.IsNotExist(err) {
+		// Create default config file
+		config = defaultConfig()
+		if err := createConfigFile(fullConfigPath, config); err != nil {
+			return nil, fmt.Errorf("failed to create default config file: %w", err)
+		}
+		fmt.Printf("Default config file created at %s\n", fullConfigPath)
 	}
 
 	expandPaths(config)
@@ -77,39 +90,31 @@ func (m *ConfigManager) Get(key string) interface{} {
 }
 
 func expandPaths(conf *Config) error {
-	// Expand Google Sheets credentials file path
-	expandedPath, err := path.ExpandPathWithHome(conf.GoogleSheets.CredentialsFile)
-	if err != nil {
-		return err
+	var err error
+	if conf.GoogleSheets.Enabled {
+		expandedPath, err := pkg.GetExpandedPathWithHome(conf.GoogleSheets.CredentialsFile)
+		if err != nil {
+			return err
+		}
+		conf.GoogleSheets.CredentialsFile = expandedPath
 	}
-	conf.GoogleSheets.CredentialsFile = expandedPath
 
-	// Expand storage database path
-	expandedPath, err = path.ExpandPathWithHome(conf.Storage.DatabasePath)
+	expandedPath, err := pkg.GetExpandedPathWithHome(conf.Storage.DatabasePath)
 	if err != nil {
 		return err
 	}
 	conf.Storage.DatabasePath = expandedPath
 
-	// Expand daemon paths
-	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.SocketPath)
-	if err != nil {
-		return err
-	}
-	conf.Daemon.SocketPath = expandedPath
-	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.PidFile)
-	if err != nil {
-		return err
-	}
-	conf.Daemon.PidFile = expandedPath
-	expandedPath, err = path.ExpandPathWithHome(conf.Daemon.LogFile)
-	if err != nil {
-		return err
-	}
-	conf.Daemon.LogFile = expandedPath
+	if conf.DaemonSocketPath != "" {
+		expandedPath, err = pkg.GetExpandedPathWithHome(conf.DaemonSocketPath)
+		if err != nil {
+			return err
+		}
 
-	// Expand logging output file path
-	expandedPath, err = path.ExpandPathWithHome(conf.Logging.OutputFile)
+		conf.DaemonSocketPath = expandedPath
+	}
+
+	expandedPath, err = pkg.GetExpandedPathWithHome(conf.Logging.OutputFile)
 	if err != nil {
 		return err
 	}
@@ -118,67 +123,55 @@ func expandPaths(conf *Config) error {
 	return nil
 }
 
-func defaultConfigPath() string {
-	return "~/"
-}
-
-// CraftieError represents a base error type for the application
-type CraftieError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Cause   error  `json:"cause,omitempty"`
-}
-
-func (e *CraftieError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("%s: %s (caused by: %v)", e.Code, e.Message, e.Cause)
+func createConfigFile(configPath string, config *Config) error {
+	// Ensure directory exists, should be done by the installer
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
 	}
-	return fmt.Sprintf("%s: %s", e.Code, e.Message)
-}
 
-func (e *CraftieError) Unwrap() error {
-	return e.Cause
-}
-
-// Error codes
-const (
-	ErrCodeValidation    = "VALIDATION_ERROR"
-	ErrCodeDatabase      = "DATABASE_ERROR"
-	ErrCodeNetwork       = "NETWORK_ERROR"
-	ErrCodeAuth          = "AUTH_ERROR"
-	ErrCodeConfig        = "CONFIG_ERROR"
-	ErrCodeSession       = "SESSION_ERROR"
-	ErrCodeDaemon        = "DAEMON_ERROR"
-	ErrCodeNotification  = "NOTIFICATION_ERROR"
-	ErrCodeSync          = "SYNC_ERROR"
-	ErrCodeFileSystem    = "FILESYSTEM_ERROR"
-	ErrCodeNotFound      = "NOT_FOUND"
-	ErrCodeAlreadyExists = "ALREADY_EXISTS"
-	ErrCodePermission    = "PERMISSION_ERROR"
-	ErrCodeTimeout       = "TIMEOUT_ERROR"
-)
-
-// ValidationError represents a configuration or input validation error
-type ValidationError struct {
-	*CraftieError
-}
-
-func NewValidationError(message string) *ValidationError {
-	return &ValidationError{
-		CraftieError: &CraftieError{
-			Code:    ErrCodeValidation,
-			Message: message,
-		},
+	// Create config file
+	file, err := os.Create(configPath)
+	if err != nil {
+		return err
 	}
+	defer file.Close()
+
+	configContent, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("creating config file issue: failed to marshal config file")
+	}
+
+	_, err = file.Write(configContent)
+	if err != nil {
+		return fmt.Errorf("creating config file issue: failed to write to a file")
+	}
+
+	return nil
+}
+
+// TODO: Add support for other OS-es
+func DefaultConfigPath() string {
+	// Use XDG_CONFIG_HOME if set, otherwise default to ~/.config
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			// Fallback to system config
+			return "/etc/craftie/craftie.yaml"
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+	return filepath.Join(configDir, "craftie", "craftie.yaml")
 }
 
 // Config represents the application configuration
 type Config struct {
-	GoogleSheets  GoogleSheetsConfig `yaml:"google_sheets" mapstructure:"google_sheets"`
-	Notifications NotificationConfig `yaml:"notifications" mapstructure:"notifications"`
-	Storage       StorageConfig      `yaml:"storage" mapstructure:"storage"`
-	Daemon        DaemonConfig       `yaml:"daemon" mapstructure:"daemon"`
-	Logging       LoggingConfig      `yaml:"logging" mapstructure:"logging"`
+	DaemonSocketPath string             `yaml:"socket_path" mapstructure:"socket_path"`
+	GoogleSheets     GoogleSheetsConfig `yaml:"google_sheets" mapstructure:"google_sheets"`
+	Notifications    NotificationConfig `yaml:"notifications" mapstructure:"notifications"`
+	Storage          StorageConfig      `yaml:"storage" mapstructure:"storage"`
+	Logging          LoggingConfig      `yaml:"logging" mapstructure:"logging"`
 }
 
 // GoogleSheetsConfig holds Google Sheets API configuration
@@ -210,34 +203,20 @@ type StorageConfig struct {
 	CompressDB     bool          `yaml:"compress_db" mapstructure:"compress_db"`
 }
 
-// DaemonConfig holds daemon service configuration
-type DaemonConfig struct {
-	SocketPath string `yaml:"socket_path" mapstructure:"socket_path"`
-	PidFile    string `yaml:"pid_file" mapstructure:"pid_file"`
-	LogFile    string `yaml:"log_file" mapstructure:"log_file"`
-	AutoStart  bool   `yaml:"auto_start" mapstructure:"auto_start"`
-}
-
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level      string `yaml:"level" mapstructure:"level"`
 	Format     string `yaml:"format" mapstructure:"format"`
 	OutputFile string `yaml:"output_file" mapstructure:"output_file"`
-	MaxSize    int    `yaml:"max_size" mapstructure:"max_size"`       // MB
-	MaxBackups int    `yaml:"max_backups" mapstructure:"max_backups"` // number of backup files
-	MaxAge     int    `yaml:"max_age" mapstructure:"max_age"`         // days
+	// MaxSize    int    `yaml:"max_size" mapstructure:"max_size"`       // MB
+	// MaxBackups int    `yaml:"max_backups" mapstructure:"max_backups"` // number of backup files
+	// MaxAge     int    `yaml:"max_age" mapstructure:"max_age"`         // days
 }
 
 func defaultConfig() *Config {
 	return &Config{
 		GoogleSheets: GoogleSheetsConfig{
-			CredentialsFile: "~/.craftie/service-account.json",
-			SpreadsheetID:   "",
-			SheetName:       "CraftTime",
-			SyncInterval:    15 * time.Minute,
-			Enabled:         false,
-			RetryAttempts:   3,
-			RetryDelay:      5 * time.Second,
+			Enabled: false,
 		},
 		Notifications: NotificationConfig{
 			Enabled:          true,
@@ -247,26 +226,20 @@ func defaultConfig() *Config {
 			ReminderMessage:  "Craftie is tracking your time - %s elapsed",
 		},
 		Storage: StorageConfig{
-			DatabasePath:   "~/.craftie/sessions.db",
+			DatabasePath:   path.Join(pkg.UnixCraftieConfigDir, "sessions.db"),
 			BackupEnabled:  true,
 			BackupInterval: 24 * time.Hour,
 			MaxSessions:    10000,
-			CompressDB:     false,
+			CompressDB:     true,
 		},
-		Daemon: DaemonConfig{
-			SocketPath: "~/.craftie/daemon.sock",
-			PidFile:    "~/.craftie/craftie.pid",
-			LogFile:    "~/.craftie/craftie.log",
-			AutoStart:  false,
-		},
+		DaemonSocketPath: "~/.craftie/daemon.sock",
 		Logging: LoggingConfig{
-			Level:  "info",
-			Format: "text",
-			// TODO: Wont log into file. Gonna be streaming to stdout instead. And call it a day
-			OutputFile: "~/.craftie/craftie.log",
-			MaxSize:    10, // 10MB
-			MaxBackups: 3,
-			MaxAge:     30, // 30 days
+			Level:      "info",
+			Format:     "text",
+			OutputFile: path.Join(DefaultConfigPath(), "craftie.log"),
+			// MaxSize:    10, // 10MB
+			// MaxBackups: 3,
+			// MaxAge:     30, // 30 days
 		},
 	}
 }
@@ -274,44 +247,34 @@ func defaultConfig() *Config {
 func (c *Config) Validate() error {
 	if c.GoogleSheets.Enabled {
 		if c.GoogleSheets.CredentialsFile == "" {
-			return NewValidationError("google_sheets.credentials_file is required when Google Sheets is enabled")
+			return pkg.NewValidationError("google_sheets.credentials_file is required when Google Sheets is enabled")
 		}
 
 		// Check if credentials file exists
 		if _, err := os.Stat(c.GoogleSheets.CredentialsFile); os.IsNotExist(err) {
-			return NewValidationError("Google Sheets credentials file not found: " + c.GoogleSheets.CredentialsFile)
+			return pkg.NewValidationError("Google Sheets credentials file not found: " + c.GoogleSheets.CredentialsFile)
 		}
 
 		if c.GoogleSheets.SpreadsheetID == "" {
-			return NewValidationError("google_sheets.spreadsheet_id is required when Google Sheets is enabled")
+			return pkg.NewValidationError("google_sheets.spreadsheet_id is required when Google Sheets is enabled")
 		}
 	}
 
 	if c.Storage.DatabasePath == "" {
-		return NewValidationError("storage.database_path is required")
+		return pkg.NewValidationError("storage.database_path is required")
 	}
 
-	if c.Daemon.SocketPath == "" {
-		return NewValidationError("daemon.socket_path is required")
-	}
-
-	if c.Daemon.PidFile == "" {
-		return NewValidationError("daemon.pid_file is required")
-	}
-
-	// Validate log level
 	validLevels := map[string]bool{
 		"trace": true, "debug": true, "info": true,
 		"warn": true, "error": true, "fatal": true, "panic": true,
 	}
 	if !validLevels[c.Logging.Level] {
-		return NewValidationError("logging.level must be one of: trace, debug, info, warn, error, fatal, panic")
+		return pkg.NewValidationError("logging.level must be one of: trace, debug, info, warn, error, fatal, panic")
 	}
-
 	// Validate log format
 	validFormats := map[string]bool{"text": true, "json": true}
 	if !validFormats[c.Logging.Format] {
-		return NewValidationError("logging.format must be either 'text' or 'json'")
+		return pkg.NewValidationError("logging.format must be either 'text' or 'json'")
 	}
 
 	return nil

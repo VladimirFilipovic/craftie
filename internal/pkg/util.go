@@ -1,4 +1,4 @@
-package path
+package pkg
 
 import (
 	"fmt"
@@ -9,7 +9,9 @@ import (
 	"github.com/vlad/craftie/pkg/types"
 )
 
-func ExpandPathWithHome(path string) (string, error) {
+const UnixCraftieConfigDir = "/etc/craftie"
+
+func GetExpandedPathWithHome(path string) (string, error) {
 	if path == "" {
 		return "", types.NewValidationError("path cannot be empty")
 	}

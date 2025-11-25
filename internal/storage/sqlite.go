@@ -7,7 +7,7 @@ import (
 	"time"
 
 	sql "github.com/jmoiron/sqlx"
-	"github.com/vlad/craftie/internal/path"
+	"github.com/vlad/craftie/internal/pkg"
 	"github.com/vlad/craftie/pkg/types"
 	_ "modernc.org/sqlite"
 )
@@ -18,7 +18,7 @@ type SQLiteStorage struct {
 }
 
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	dbPath, err := path.ExpandPathWithHome(dbPath)
+	dbPath, err := pkg.GetExpandedPathWithHome(dbPath)
 
 	if err != nil {
 		return nil, types.NewDatabaseErrorWithCause("failed to get home directory", err)
@@ -386,7 +386,7 @@ func (s *SQLiteStorage) GetConfigValue(key string) (string, error) {
 
 func (s *SQLiteStorage) Close() error {
 	if s.Stats().OpenConnections > 0 {
-		return s.Close()
+		return s.DB.Close()
 	}
 	return nil
 }
