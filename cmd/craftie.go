@@ -111,8 +111,8 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 
 	fmt.Printf("🚀 Starting session for project '%s'...\n", projectName)
 	fmt.Println("Configuration loaded from:", configPath)
-	fmt.Println("Config", cfg)
 	fmt.Println("Notes:", notes)
+	fmt.Println("CFG ", cfg)
 
 	return nil
 

@@ -26,29 +26,41 @@ func NewConfigManager() *ConfigManager {
 	}
 }
 
-func (cm *ConfigManager) LoadConfig(configPath string) (*Config, error) {
+func (cm *ConfigManager) LoadConfig(cfgPath string) (*Config, error) {
 	var config *Config
+	var saveDefaultConfig = false
 
-	generateDefaultConfig := false
-	if configPath == "" {
-		configPath = DefaultConfigPath()
-		generateDefaultConfig = true
-	}
+	// if no path provided use default one and generate it it doesn't already exists
+	if cfgPath == "" {
+		fmt.Println("No config path provided using the default one")
 
-	fullConfigPath, err := pkg.GetExpandedPathWithHome(configPath)
-	if err != nil {
-		return nil, err
+		defaultCfg, err := pkg.GetExpandedPathWithHome(DefaultConfigPath())
+		cfgPath = defaultCfg
+
+		if err != nil {
+			return nil, err
+		}
+
+		// if default config isn't doesn't exist as file, create it
+		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+			fmt.Println("default config  doesn't exist generating it..")
+			saveDefaultConfig = true
+		}
+
 	}
 
 	// load existing config file
-	if !generateDefaultConfig {
-		// Load existing config file
-		cm.viper.AddConfigPath(filepath.Dir(fullConfigPath))
-		cm.viper.SetConfigName(filepath.Base(fullConfigPath))
+	if !saveDefaultConfig {
+		fmt.Println(cfgPath)
+		fmt.Println(filepath.Dir(cfgPath))
+		fmt.Println(filepath.Base(cfgPath))
+
+		cm.viper.AddConfigPath(filepath.Dir(cfgPath))
+		cm.viper.SetConfigName(filepath.Base(cfgPath))
 		cm.viper.SetConfigType("yaml")
 		cm.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 		cm.viper.AutomaticEnv()
-		if err := viper.ReadInConfig(); err != nil {
+		if err := cm.viper.ReadInConfig(); err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 
@@ -56,21 +68,15 @@ func (cm *ConfigManager) LoadConfig(configPath string) (*Config, error) {
 		if err := cm.viper.Unmarshal(config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 		}
-
 	}
 
-	// When no config path is provided or default configPath is provided
-	// check if default config file exists and if not create it with sensible values
-	if _, err := os.Stat(fullConfigPath); generateDefaultConfig && os.IsNotExist(err) {
-		// Create default config file
+	if saveDefaultConfig {
 		config = defaultConfig()
-		if err := createConfigFile(fullConfigPath, config); err != nil {
+		if err := createConfigFile(cfgPath, config); err != nil {
 			return nil, fmt.Errorf("failed to create default config file: %w", err)
 		}
-		fmt.Printf("Default config file created at %s\n", fullConfigPath)
+		fmt.Printf("Default config file created at %s\n", cfgPath)
 	}
-
-	expandPaths(config)
 
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -189,9 +195,7 @@ type GoogleSheetsConfig struct {
 type NotificationConfig struct {
 	Enabled          bool          `yaml:"enabled" mapstructure:"enabled"`
 	ReminderInterval time.Duration `yaml:"reminder_interval" mapstructure:"reminder_interval"`
-	ShowTrayIcon     bool          `yaml:"show_tray_icon" mapstructure:"show_tray_icon"`
 	SoundEnabled     bool          `yaml:"sound_enabled" mapstructure:"sound_enabled"`
-	ReminderMessage  string        `yaml:"reminder_message" mapstructure:"reminder_message"`
 }
 
 // StorageConfig holds local storage configuration
@@ -206,11 +210,7 @@ type StorageConfig struct {
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level      string `yaml:"level" mapstructure:"level"`
-	Format     string `yaml:"format" mapstructure:"format"`
 	OutputFile string `yaml:"output_file" mapstructure:"output_file"`
-	// MaxSize    int    `yaml:"max_size" mapstructure:"max_size"`       // MB
-	// MaxBackups int    `yaml:"max_backups" mapstructure:"max_backups"` // number of backup files
-	// MaxAge     int    `yaml:"max_age" mapstructure:"max_age"`         // days
 }
 
 func defaultConfig() *Config {
@@ -221,9 +221,7 @@ func defaultConfig() *Config {
 		Notifications: NotificationConfig{
 			Enabled:          true,
 			ReminderInterval: 1 * time.Hour,
-			ShowTrayIcon:     true,
 			SoundEnabled:     false,
-			ReminderMessage:  "Craftie is tracking your time - %s elapsed",
 		},
 		Storage: StorageConfig{
 			DatabasePath:   path.Join(pkg.UnixCraftieConfigDir, "sessions.db"),
@@ -232,14 +230,9 @@ func defaultConfig() *Config {
 			MaxSessions:    10000,
 			CompressDB:     true,
 		},
-		DaemonSocketPath: "~/.craftie/daemon.sock",
 		Logging: LoggingConfig{
 			Level:      "info",
-			Format:     "text",
 			OutputFile: path.Join(DefaultConfigPath(), "craftie.log"),
-			// MaxSize:    10, // 10MB
-			// MaxBackups: 3,
-			// MaxAge:     30, // 30 days
 		},
 	}
 }
@@ -271,11 +264,5 @@ func (c *Config) Validate() error {
 	if !validLevels[c.Logging.Level] {
 		return pkg.NewValidationError("logging.level must be one of: trace, debug, info, warn, error, fatal, panic")
 	}
-	// Validate log format
-	validFormats := map[string]bool{"text": true, "json": true}
-	if !validFormats[c.Logging.Format] {
-		return pkg.NewValidationError("logging.format must be either 'text' or 'json'")
-	}
-
 	return nil
 }
