@@ -16,11 +16,10 @@ import (
 
 type SheetsClient struct {
 	sheetsService *sheets.Service
-	config        *config.ConfigManager
+	config        *config.Config
 }
 
-func NewSheetsClient(configManager *config.ConfigManager) (*SheetsClient, error) {
-	cfg := configManager.Config
+func NewSheetsClient(cfg *config.Config) (*SheetsClient, error) {
 	if !cfg.GoogleSheets.Enabled {
 		return nil, &types.CraftieError{
 			Code:    types.ErrCodeConfig,
@@ -60,12 +59,12 @@ func NewSheetsClient(configManager *config.ConfigManager) (*SheetsClient, error)
 
 	return &SheetsClient{
 		sheetsService: srv,
-		config:        configManager,
+		config:        cfg,
 	}, nil
 }
 
 func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session) error {
-	cfg := c.config.Config
+	cfg := c.config
 
 	// Prepare the data to write
 	var endTime string
@@ -106,7 +105,7 @@ func (c *SheetsClient) WriteSession(ctx context.Context, session *types.Session)
 
 // WriteSessions writes multiple sessions to Google Sheets
 func (c *SheetsClient) WriteSessions(ctx context.Context, sessions []*types.Session) error {
-	cfg := c.config.Config
+	cfg := c.config
 
 	// Prepare batch data
 	values := make([][]interface{}, 0, len(sessions))
@@ -148,7 +147,7 @@ func (c *SheetsClient) WriteSessions(ctx context.Context, sessions []*types.Sess
 
 // TestConnection tests the connection to Google Sheets
 func (c *SheetsClient) TestConnection(ctx context.Context) error {
-	cfg := c.config.Config
+	cfg := c.config
 
 	// Try to read spreadsheet metadata
 	_, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
@@ -164,7 +163,7 @@ func (c *SheetsClient) TestConnection(ctx context.Context) error {
 }
 
 func (c *SheetsClient) GetSpreadsheetInfo(ctx context.Context) (*sheets.Spreadsheet, error) {
-	cfg := c.config.Config
+	cfg := c.config
 
 	spreadsheet, err := c.sheetsService.Spreadsheets.Get(cfg.GoogleSheets.SpreadsheetID).Do()
 	if err != nil {

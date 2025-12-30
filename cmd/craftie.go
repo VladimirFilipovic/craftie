@@ -102,17 +102,15 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	notes := cmd.String("notes")
 	configPath := cmd.String("config")
 
-	configManager := config.NewConfigManager()
-
-	cfg, err := configManager.LoadConfig(configPath)
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to initialize config manager: %w", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	fmt.Printf("🚀 Starting session for project '%s'...\n", projectName)
-	fmt.Println("Configuration loaded from:", configPath)
+	fmt.Println("Configuration loaded")
 	fmt.Println("Notes:", notes)
-	fmt.Println("CFG ", cfg)
+	fmt.Println("CFG:", cfg)
 
 	return nil
 

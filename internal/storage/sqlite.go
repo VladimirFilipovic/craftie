@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sql "github.com/jmoiron/sqlx"
-	"github.com/vlad/craftie/internal/pkg"
 	"github.com/vlad/craftie/pkg/types"
 	_ "modernc.org/sqlite"
 )
@@ -18,12 +17,6 @@ type SQLiteStorage struct {
 }
 
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	dbPath, err := pkg.GetExpandedPathWithHome(dbPath)
-
-	if err != nil {
-		return nil, types.NewDatabaseErrorWithCause("failed to get home directory", err)
-	}
-
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
