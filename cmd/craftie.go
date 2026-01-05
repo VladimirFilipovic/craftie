@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/urfave/cli/v3"
 	"github.com/vlad/craftie/internal/config"
+	"github.com/vlad/craftie/internal/session"
 )
 
 func main() {
@@ -63,10 +67,26 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	fmt.Printf("🚀 Starting session for project '%s'...\n", projectName)
+	fmt.Println("🚀 Starting session for project:", projectName)
 	fmt.Println("Configuration loaded")
 	fmt.Println("Notes:", notes)
 	fmt.Println("CFG:", cfg)
+
+	session := session.Session{
+		StartTime:   time.Now(),
+		Notes:       notes,
+		ProjectName: projectName,
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	fmt.Println("Session in progress, have fun!")
+
+	<-sigChan
+
+	fmt.Println("Session ended manually.", session)
+	fmt.Println("Duration:", session.GetDurationSec())
 
 	return nil
 
