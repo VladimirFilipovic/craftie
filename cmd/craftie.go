@@ -70,15 +70,7 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 
 	return nil
 
-	// storage, err := storage.NewSQLiteStorage(configManager.Config.Storage.DatabasePath)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to initialize storage: %w", err)
-	// }
-	// defer storage.Close()
-
-	// sessionManager := session.NewManager(storage)
-
-	// // Start session
+	// Start session
 	// startSession, err := sessionManager.StartSession(projectName, notes)
 	// if err != nil {
 	// 	return fmt.Errorf("failed to start session: %w", err)
@@ -153,97 +145,8 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 // 	if status.IsActive {
 // 		fmt.Printf("🟢 Active Session: %s\n", status.CurrentSession.ProjectName)
 // 		fmt.Printf("   Started: %s\n", status.CurrentSession.StartTime.Format("2006-01-02 15:04:05"))
-// 		fmt.Printf("   Duration: %s\n", formatDuration(status.CurrentSession.GetDuration()))
-// 		if status.CurrentSession.Notes != "" {
-// 			fmt.Printf("   Notes: %s\n", status.CurrentSession.Notes)
-// 		}
-// 	} else {
-// 		fmt.Println("🔴 No active session")
-// 	}
-
-// 	fmt.Printf("\n📈 Statistics:\n")
-// 	fmt.Printf("   Total Sessions: %d\n", status.TotalSessions)
-// 	fmt.Printf("   Today's Sessions: %d\n", status.TodaySessions)
-// 	fmt.Printf("   Today's Duration: %s\n", formatDuration(status.TodayDuration))
-
-// 	return nil
-// }
-
-// func listSessions(ctx context.Context) error {
-// 	// Initialize components
-// 	configManager := config.NewManager()
-// 	if err := configManager.Load(ctx.String("config")); err != nil {
-// 		return fmt.Errorf("failed to load configuration: %w", err)
-// 	}
-
-// 	storage, err := storage.NewSQLiteStorage(configManager.GetConfig().Storage.DatabasePath)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to initialize storage: %w", err)
-// 	}
-// 	defer storage.Close()
-
-// 	sessionManager := session.NewManager(storage)
-
-// 	// Get sessions
-// 	filter := &types.SessionFilter{
-// 		Limit: ctx.Int("limit"),
-// 	}
-
-// 	sessions, err := sessionManager.GetSessions(filter)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get sessions: %w", err)
-// 	}
-
-// 	fmt.Printf("📋 Recent Sessions (showing %d)\n", len(sessions))
-// 	fmt.Println("================================")
-
-// 	for _, session := range sessions {
-// 		status := "✅"
-// 		if session.IsActive() {
-// 			status = "🟢"
-// 		}
-
-// 		fmt.Printf("%s %s - %s\n", status, session.StartTime.Format("2006-01-02 15:04"),
-// 			formatDuration(session.GetDuration()))
-// 		fmt.Printf("   Project: %s\n", session.ProjectName)
-// 		if session.Notes != "" {
-// 			fmt.Printf("   Notes: %s\n", session.Notes)
-// 		}
-// 		fmt.Println()
-// 	}
-
-// 	return nil
-// }
-
 // func syncSheets(ctx context.Context) error {
 // 	fmt.Println("🔄 Syncing with Google Sheets...")
 // 	fmt.Println("This feature is not yet implemented.")
 // 	return nil
-// }
-
-// func startDaemon(ctx *cli.ct) error {
-// 	fmt.Println("🚀 Starting daemon...")
-// 	fmt.Println("This feature is not yet implemented.")
-// 	return nil
-// }
-
-// func exitDaemon(ctx context.Context) error {
-// 	fmt.Println("👋 Exiting daemon...")
-// 	fmt.Println("This feature is not yet implemented.")
-// 	return nil
-// }
-
-// func formatDuration(seconds uint64) string {
-// 	if seconds < 60 {
-// 		return fmt.Sprintf("%ds", seconds)
-// 	}
-
-// 	minutes := seconds / 60
-// 	if minutes < 60 {
-// 		return fmt.Sprintf("%dm %ds", minutes, seconds%60)
-// 	}
-
-// 	hours := minutes / 60
-// 	minutes = minutes % 60
-// 	return fmt.Sprintf("%dh %dm", hours, minutes)
 // }
