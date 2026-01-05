@@ -29,22 +29,21 @@ func LoadConfig(cfgPath string) (*Config, error) {
 
 	if !configFileExists {
 		fmt.Println("Config doesn't exist, generating default...")
-		config := defaultConfig()
 
-		if err := createConfigFile(cfgPath, config); err != nil {
+		if err := createConfigFile(cfgPath, defaultConfig()); err != nil {
 			return nil, fmt.Errorf("failed to create default config file: %w", err)
 		}
 		fmt.Printf("Default config file created at %s\n", cfgPath)
 	}
 
-	// Load existing config file
+	// Load config file
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config *Config
-	if err := yaml.Unmarshal(data, config); err != nil {
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -52,7 +51,7 @@ func LoadConfig(cfgPath string) (*Config, error) {
 		return nil, err
 	}
 
-	return config, nil
+	return &config, nil
 }
 
 func createConfigFile(configPath string, config *Config) error {
