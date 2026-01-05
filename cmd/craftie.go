@@ -45,50 +45,6 @@ func main() {
 				},
 				Action: startSession,
 			},
-			// {
-			// 	Name:    "stop",
-			// 	Usage:   "Stop the current time tracking session",
-			// 	Aliases: []string{"x"},
-			// 	Action:  stopSession,
-			// },
-			// {
-			// 	Name:    "status",
-			// 	Usage:   "Show current tracking status",
-			// 	Aliases: []string{"st"},
-			// 	Action:  showStatus,
-			// },
-			// {
-			// 	Name:    "list",
-			// 	Usage:   "List recent sessions",
-			// 	Aliases: []string{"ls"},
-			// 	Flags: []cli.Flag{
-			// 		&cli.IntFlag{
-			// 			Name:    "limit",
-			// 			Aliases: []string{"l"},
-			// 			Usage:   "Number of sessions to show",
-			// 			Value:   10,
-			// 		},
-			// 	},
-			// 	Action: listSessions,
-			// },
-			// {
-			// 	Name:    "sync",
-			// 	Usage:   "Sync sessions with Google Sheets",
-			// 	Aliases: []string{"sy"},
-			// 	Action:  syncSheets,
-			// },
-			// {
-			// 	Name:    "daemon",
-			// 	Usage:   "Start the background daemon",
-			// 	Aliases: []string{"d"},
-			// 	Action:  startDaemon,
-			// },
-			// {
-			// 	Name:    "exit",
-			// 	Usage:   "Exit the daemon",
-			// 	Aliases: []string{"e"},
-			// 	Action:  exitDaemon,
-			// },
 		},
 	}
 

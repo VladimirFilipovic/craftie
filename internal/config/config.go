@@ -81,7 +81,6 @@ func createConfigFile(configPath string, config *Config) error {
 	return nil
 }
 
-// DefaultConfigPath returns the default configuration file path
 func DefaultConfigPath() string {
 	// Use XDG_CONFIG_HOME if set, otherwise default to ~/.config
 	configDir := os.Getenv("XDG_CONFIG_HOME")
@@ -96,14 +95,13 @@ func DefaultConfigPath() string {
 	return filepath.Join(configDir, "craftie", "craftie.yaml")
 }
 
-// Config represents the application configuration
 type Config struct {
 	GoogleSheets  GoogleSheetsConfig `yaml:"google_sheets" mapstructure:"google_sheets"`
 	Notifications NotificationConfig `yaml:"notifications" mapstructure:"notifications"`
 	Logging       LoggingConfig      `yaml:"logging" mapstructure:"logging"`
+	CSV           CSVConfig          `yaml:"csv" mapstructure:"csv"`
 }
 
-// GoogleSheetsConfig holds Google Sheets API configuration
 type GoogleSheetsConfig struct {
 	CredentialsFile string `yaml:"credentials_file" mapstructure:"credentials_file"`
 	SpreadsheetID   string `yaml:"spreadsheet_id" mapstructure:"spreadsheet_id"`
@@ -112,17 +110,21 @@ type GoogleSheetsConfig struct {
 	Enabled         bool `yaml:"enabled" mapstructure:"enabled"`
 }
 
-// NotificationConfig holds notification system configuration
 type NotificationConfig struct {
 	Enabled          bool          `yaml:"enabled" mapstructure:"enabled"`
 	ReminderInterval time.Duration `yaml:"reminder_interval" mapstructure:"reminder_interval"`
 	SoundEnabled     bool          `yaml:"sound_enabled" mapstructure:"sound_enabled"`
 }
 
-// LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level      string `yaml:"level" mapstructure:"level"`
 	OutputFile string `yaml:"output_file" mapstructure:"output_file"`
+}
+
+// CSVConfig holds CSV file configuration
+type CSVConfig struct {
+	Enabled  bool   `yaml:"enabled" mapstructure:"enabled"`
+	FilePath string `yaml:"file_path" mapstructure:"file_path"`
 }
 
 func defaultConfig() *Config {
@@ -132,11 +134,15 @@ func defaultConfig() *Config {
 		},
 		Notifications: NotificationConfig{
 			Enabled:          true,
-			ReminderInterval: 1 * time.Hour,
-			SoundEnabled:     false,
+			ReminderInterval: 15 * time.Minute,
+			SoundEnabled:     true,
 		},
 		Logging: LoggingConfig{
 			Level: "info",
+		},
+		CSV: CSVConfig{
+			Enabled:  false,
+			FilePath: "",
 		},
 	}
 }
@@ -154,6 +160,12 @@ func (c *Config) Validate() error {
 
 		if c.GoogleSheets.SpreadsheetID == "" {
 			return pkg.NewValidationError("google_sheets.spreadsheet_id is required when Google Sheets is enabled")
+		}
+	}
+
+	if c.CSV.Enabled {
+		if c.CSV.FilePath == "" {
+			return pkg.NewValidationError("csv.file_path is required when CSV is enabled")
 		}
 	}
 
