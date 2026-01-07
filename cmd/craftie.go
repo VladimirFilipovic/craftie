@@ -49,6 +49,12 @@ func run() int {
 						Usage:    "Session notes",
 						Required: false,
 					},
+					&cli.StringFlag{
+						Name:     "endtime",
+						Aliases:  []string{"e"},
+						Usage:    "Session end time duration (e.g., 2h, 30m, 1h30m)",
+						Required: false,
+					},
 				},
 				Action: startSession,
 			},
@@ -67,6 +73,7 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	projectName := cmd.String("project")
 	notes := cmd.String("notes")
 	configPath := cmd.String("config")
+	endTimeStr := cmd.String("endtime")
 
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
@@ -84,15 +91,25 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 		ProjectName: projectName,
 	}
 
+	// Set up end timer if provided
+	timerChan, err := session.SetEndTimer(endTimeStr)
+	if err != nil {
+		return err
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	fmt.Printf("Started session for project \"%s\" have fun \n", projectName)
 
-	<-sigChan
-
-	fmt.Println("Session interrupted")
-	fmt.Println("Session lasted ", session.FormattedDuration())
+	select {
+	case <-sigChan:
+		fmt.Println("Session interrupted")
+		fmt.Println("Session lasted ", session.FormattedDuration())
+	case <-timerChan:
+		fmt.Println("Session time reached!")
+		fmt.Println("Session lasted ", session.FormattedDuration())
+	}
 
 	return nil
 }
