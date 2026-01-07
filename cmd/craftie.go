@@ -11,6 +11,7 @@ import (
 	"github.com/urfave/cli/v3"
 	"github.com/vlad/craftie/internal/config"
 	"github.com/vlad/craftie/internal/session"
+	"github.com/vlad/craftie/internal/sheets"
 )
 
 func main() {
@@ -70,6 +71,7 @@ func run() int {
 }
 
 func startSession(ctx context.Context, cmd *cli.Command) error {
+	// take flag values
 	projectName := cmd.String("project")
 	notes := cmd.String("notes")
 	configPath := cmd.String("config")
@@ -105,10 +107,31 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	select {
 	case <-sigChan:
 		fmt.Println("Session interrupted")
-		fmt.Println("Session lasted ", session.FormattedDuration())
 	case <-timerChan:
 		fmt.Println("Session time reached!")
-		fmt.Println("Session lasted ", session.FormattedDuration())
+	}
+
+	session.Stop()
+
+	duration, err := session.Duration()
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Session lasted ", time.Time{}.Add(duration).Format(time.TimeOnly))
+
+	// save session data
+	if cfg.CSV.Enabled {
+		if err := sheets.SaveToCsv(cfg.CSV.FilePath, &session); err != nil {
+			fmt.Printf("Warning: failed to save session to CSV: %v\n", err)
+		} else {
+			fmt.Printf("Session saved to CSV: %s\n", cfg.CSV.FilePath)
+		}
+	}
+
+	if cfg.GoogleSheets.Enabled {
+		// save to google sheets
 	}
 
 	return nil
