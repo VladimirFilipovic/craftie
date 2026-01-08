@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vlad/craftie/internal/pkg"
@@ -45,6 +46,11 @@ func LoadConfig(cfgPath string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Expand tilde paths in config
+	if err := config.expandPaths(); err != nil {
+		return nil, fmt.Errorf("failed to expand paths: %w", err)
 	}
 
 	if err := config.Validate(); err != nil {
@@ -147,6 +153,31 @@ func defaultConfig() *Config {
 	}
 }
 
+// expandPaths expands tilde (~) in file paths to the user's home directory
+func (c *Config) expandPaths() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Expand tilde in Google Sheets credentials file
+	if strings.HasPrefix(c.GoogleSheets.CredentialsFile, "~/") {
+		c.GoogleSheets.CredentialsFile = filepath.Join(homeDir, c.GoogleSheets.CredentialsFile[2:])
+	}
+
+	// Expand tilde in CSV file path
+	if strings.HasPrefix(c.CSV.FilePath, "~/") {
+		c.CSV.FilePath = filepath.Join(homeDir, c.CSV.FilePath[2:])
+	}
+
+	// Expand tilde in logging output file
+	if strings.HasPrefix(c.Logging.OutputFile, "~/") {
+		c.Logging.OutputFile = filepath.Join(homeDir, c.Logging.OutputFile[2:])
+	}
+
+	return nil
+}
+
 func (c *Config) Validate() error {
 	if c.GoogleSheets.Enabled {
 		if c.GoogleSheets.CredentialsFile == "" {
@@ -160,6 +191,10 @@ func (c *Config) Validate() error {
 
 		if c.GoogleSheets.SpreadsheetID == "" {
 			return pkg.NewValidationError("google_sheets.spreadsheet_id is required when Google Sheets is enabled")
+		}
+
+		if c.GoogleSheets.SheetName == "" {
+			return pkg.NewValidationError("google_sheets.sheet_name is required when Google Sheets is enabled")
 		}
 	}
 

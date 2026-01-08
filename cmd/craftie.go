@@ -99,16 +99,26 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	syncChan := time.Tick(time.Minute * 10)
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	fmt.Printf("Started session for project \"%s\" have fun \n", projectName)
 
-	select {
-	case <-sigChan:
-		fmt.Println("Session interrupted")
-	case <-timerChan:
-		fmt.Println("Session time reached!")
+loop:
+	for {
+		select {
+		case <-sigChan:
+			fmt.Println("Session interrupted")
+			break loop
+		case <-timerChan:
+			fmt.Println("Session time reached!")
+			break loop
+		case <-syncChan:
+			fmt.Println("Time to sync the session")
+			// sync
+		}
 	}
 
 	session.Stop()
@@ -131,7 +141,11 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if cfg.GoogleSheets.Enabled {
-		// save to google sheets
+		if err := sheets.SaveToGoogleSheets(ctx, cfg.GoogleSheets, &session); err != nil {
+			fmt.Printf("Warning: failed to save session to Google Sheets: %v\n", err)
+		} else {
+			fmt.Printf("Session saved to Google Sheets: %s\n", cfg.GoogleSheets.SpreadsheetID)
+		}
 	}
 
 	return nil

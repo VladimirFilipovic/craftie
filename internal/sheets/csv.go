@@ -12,15 +12,6 @@ import (
 )
 
 func SaveToCsv(filePath string, session *session.Session) error {
-	// Expand tilde to home directory
-	if strings.HasPrefix(filePath, "~/") {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		filePath = filepath.Join(homeDir, filePath[2:])
-	}
-
 	// Ensure the directory exists
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
