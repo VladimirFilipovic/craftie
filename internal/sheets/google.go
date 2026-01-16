@@ -7,41 +7,34 @@ import (
 
 	"github.com/vlad/craftie/internal/config"
 	"github.com/vlad/craftie/internal/session"
-	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
-// SaveToGoogleSheets appends a session record to a Google Sheet
-func SaveToGoogleSheets(ctx context.Context, cfg config.GoogleSheetsConfig, session *session.Session) error {
-	var credentials []byte
-	var err error
-
-	if cfg.CredentialsHelper != "" {
-		credentials, err = ExecuteCredentialsHelper(cfg.CredentialsHelper)
-		if err != nil {
-			return fmt.Errorf("failed to get credentials from helper: %w", err)
-		}
-	} else {
-		// Fall back to keyring
-		credsStr, err := keyring.Get("craftie", "google-sheets")
-		if err != nil {
-			return fmt.Errorf("failed to get credentials from keyring: %w", err)
-		}
-		credentials = []byte(credsStr)
+// NewSheetsClient creates a Google Sheets service client.
+func NewSheetsClient(ctx context.Context, credentialsHelper string) (*sheets.Service, error) {
+	credentials, err := GetCredentials(credentialsHelper)
+	if err != nil {
+		return nil, err
 	}
 
 	jwtConfig, err := google.JWTConfigFromJSON(credentials, sheets.SpreadsheetsScope)
 	if err != nil {
-		return fmt.Errorf("failed to parse credentials: %w", err)
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	client := jwtConfig.Client(ctx)
-	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
+	httpClient := jwtConfig.Client(ctx)
+	srv, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
-		return fmt.Errorf("failed to create sheets service: %w", err)
+		return nil, fmt.Errorf("failed to create sheets service: %w", err)
 	}
+
+	return srv, nil
+}
+
+// SaveToGoogleSheets appends a session record to a Google Sheet
+func SaveToGoogleSheets(ctx context.Context, srv *sheets.Service, cfg config.GoogleSheetsConfig, session *session.Session) error {
 
 	duration, err := session.Duration()
 	if err != nil {

@@ -11,6 +11,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	SessionSyncTime = time.Minute * 10
+)
+
 // LoadConfig loads configuration from the specified path or creates default if it doesn't exist
 func LoadConfig(cfgPath string) (*Config, error) {
 	if cfgPath == "" {

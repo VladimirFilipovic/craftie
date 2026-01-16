@@ -12,6 +12,7 @@ import (
 	"github.com/vlad/craftie/internal/config"
 	"github.com/vlad/craftie/internal/session"
 	"github.com/vlad/craftie/internal/sheets"
+	googlesheets "google.golang.org/api/sheets/v4"
 )
 
 func main() {
@@ -87,6 +88,16 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	fmt.Println("Notes:", notes)
 	fmt.Println("CFG:", cfg)
 
+	var sheetsClient *googlesheets.Service
+	if cfg.GoogleSheets.Enabled {
+		var err error
+		sheetsClient, err = sheets.NewSheetsClient(ctx, cfg.GoogleSheets.CredentialsHelper)
+		if err != nil {
+			return fmt.Errorf("failed to create Google Sheets client: %w", err)
+		}
+		fmt.Println("Google Sheets client created")
+	}
+
 	session := session.Session{
 		StartTime:   time.Now(),
 		Notes:       notes,
@@ -99,7 +110,7 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	syncChan := time.Tick(time.Minute * 10)
+	syncChan := time.Tick(config.SessionSyncTime)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -141,7 +152,7 @@ loop:
 	}
 
 	if cfg.GoogleSheets.Enabled {
-		if err := sheets.SaveToGoogleSheets(ctx, cfg.GoogleSheets, &session); err != nil {
+		if err := sheets.SaveToGoogleSheets(ctx, sheetsClient, cfg.GoogleSheets, &session); err != nil {
 			fmt.Printf("Warning: failed to save session to Google Sheets: %v\n", err)
 		} else {
 			fmt.Printf("Session saved to Google Sheets: %s\n", cfg.GoogleSheets.SpreadsheetID)
