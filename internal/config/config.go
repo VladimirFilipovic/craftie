@@ -109,11 +109,11 @@ type Config struct {
 }
 
 type GoogleSheetsConfig struct {
-	CredentialsFile string `yaml:"credentials_file" mapstructure:"credentials_file"`
-	SpreadsheetID   string `yaml:"spreadsheet_id" mapstructure:"spreadsheet_id"`
-	SheetName       string `yaml:"sheet_name" mapstructure:"sheet_name"`
-	SyncInterval    time.Duration
-	Enabled         bool `yaml:"enabled" mapstructure:"enabled"`
+	SpreadsheetID     string `yaml:"spreadsheet_id" mapstructure:"spreadsheet_id"`
+	SheetName         string `yaml:"sheet_name" mapstructure:"sheet_name"`
+	CredentialsHelper string `yaml:"credentials_helper" mapstructure:"credentials_helper"`
+	SyncInterval      time.Duration
+	Enabled           bool `yaml:"enabled" mapstructure:"enabled"`
 }
 
 type NotificationConfig struct {
@@ -160,17 +160,14 @@ func (c *Config) expandPaths() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	// Expand tilde in Google Sheets credentials file
-	if strings.HasPrefix(c.GoogleSheets.CredentialsFile, "~/") {
-		c.GoogleSheets.CredentialsFile = filepath.Join(homeDir, c.GoogleSheets.CredentialsFile[2:])
+	if strings.HasPrefix(c.GoogleSheets.CredentialsHelper, "~/") {
+		c.GoogleSheets.CredentialsHelper = filepath.Join(homeDir, c.GoogleSheets.CredentialsHelper[2:])
 	}
 
-	// Expand tilde in CSV file path
 	if strings.HasPrefix(c.CSV.FilePath, "~/") {
 		c.CSV.FilePath = filepath.Join(homeDir, c.CSV.FilePath[2:])
 	}
 
-	// Expand tilde in logging output file
 	if strings.HasPrefix(c.Logging.OutputFile, "~/") {
 		c.Logging.OutputFile = filepath.Join(homeDir, c.Logging.OutputFile[2:])
 	}
@@ -180,15 +177,7 @@ func (c *Config) expandPaths() error {
 
 func (c *Config) Validate() error {
 	if c.GoogleSheets.Enabled {
-		if c.GoogleSheets.CredentialsFile == "" {
-			return pkg.NewValidationError("google_sheets.credentials_file is required when Google Sheets is enabled")
-		}
-
-		// Check if credentials file exists
-		if _, err := os.Stat(c.GoogleSheets.CredentialsFile); os.IsNotExist(err) {
-			return pkg.NewValidationError("Google Sheets credentials file not found: " + c.GoogleSheets.CredentialsFile)
-		}
-
+		// Check if credentials are available via helper or keyring
 		if c.GoogleSheets.SpreadsheetID == "" {
 			return pkg.NewValidationError("google_sheets.spreadsheet_id is required when Google Sheets is enabled")
 		}

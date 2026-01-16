@@ -3,11 +3,11 @@ package sheets
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/vlad/craftie/internal/config"
 	"github.com/vlad/craftie/internal/session"
+	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -15,37 +15,44 @@ import (
 
 // SaveToGoogleSheets appends a session record to a Google Sheet
 func SaveToGoogleSheets(ctx context.Context, cfg config.GoogleSheetsConfig, session *session.Session) error {
-	// Read credentials file
-	credentials, err := os.ReadFile(cfg.CredentialsFile)
-	if err != nil {
-		return fmt.Errorf("failed to read credentials file: %w", err)
+	var credentials []byte
+	var err error
+
+	if cfg.CredentialsHelper != "" {
+		credentials, err = ExecuteCredentialsHelper(cfg.CredentialsHelper)
+		if err != nil {
+			return fmt.Errorf("failed to get credentials from helper: %w", err)
+		}
+	} else {
+		// Fall back to keyring
+		credsStr, err := keyring.Get("craftie", "google-sheets")
+		if err != nil {
+			return fmt.Errorf("failed to get credentials from keyring: %w", err)
+		}
+		credentials = []byte(credsStr)
 	}
 
-	// Create Google Sheets client
-	config, err := google.JWTConfigFromJSON(credentials, sheets.SpreadsheetsScope)
+	jwtConfig, err := google.JWTConfigFromJSON(credentials, sheets.SpreadsheetsScope)
 	if err != nil {
 		return fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	client := config.Client(ctx)
+	client := jwtConfig.Client(ctx)
 	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return fmt.Errorf("failed to create sheets service: %w", err)
 	}
 
-	// Calculate duration
 	duration, err := session.Duration()
 	if err != nil {
 		return fmt.Errorf("failed to calculate duration: %w", err)
 	}
 
-	// Get end time
 	endTime := session.EndTime()
 	if endTime == nil {
 		return fmt.Errorf("session has no end time")
 	}
 
-	// Prepare row data
 	row := []interface{}{
 		session.ProjectName,
 		session.StartTime.Format("2006-01-02"),
@@ -78,7 +85,6 @@ func SaveToGoogleSheets(ctx context.Context, cfg config.GoogleSheetsConfig, sess
 		}
 	}
 
-	// Append the row
 	appendRange := fmt.Sprintf("%s!A:F", quotedSheetName)
 	valueRange := &sheets.ValueRange{
 		Values: [][]interface{}{row},
