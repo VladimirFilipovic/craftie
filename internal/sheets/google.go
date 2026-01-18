@@ -33,60 +33,106 @@ func NewSheetsClient(ctx context.Context, credentialsHelper string) (*sheets.Ser
 	return srv, nil
 }
 
-// SaveToGoogleSheets appends a session record to a Google Sheet
-func SaveToGoogleSheets(ctx context.Context, srv *sheets.Service, cfg config.GoogleSheetsConfig, session *session.Session) error {
+type GoogleSheetsParams struct {
+	Srv     *sheets.Service
+	Cfg     config.GoogleSheetsConfig
+	Session *session.Session
+}
 
-	duration, err := session.Duration()
-	if err != nil {
-		return fmt.Errorf("failed to calculate duration: %w", err)
-	}
+// SyncState tracks the row number for updating an in-progress session
+type SyncState struct {
+	RowNumber int64
+}
 
-	endTime := session.EndTime()
-	if endTime == nil {
-		return fmt.Errorf("session has no end time")
-	}
-
-	row := []interface{}{
-		session.ProjectName,
-		session.StartTime.Format("2006-01-02"),
-		session.StartTime.Format(time.TimeOnly),
-		endTime.Format(time.TimeOnly),
-		time.Time{}.Add(duration).Format(time.TimeOnly),
-		session.Notes,
-	}
+// InitRow creates the initial row for an in-progress session
+func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
+	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
 
 	// Check if sheet has headers
-	// Quote sheet name to handle special characters like spaces and hyphens
-	quotedSheetName := fmt.Sprintf("'%s'", cfg.SheetName)
 	readRange := fmt.Sprintf("%s!A1:F1", quotedSheetName)
-	resp, err := srv.Spreadsheets.Values.Get(cfg.SpreadsheetID, readRange).Do()
+	resp, err := p.Srv.Spreadsheets.Values.Get(p.Cfg.SpreadsheetID, readRange).Do()
 	if err != nil {
-		return fmt.Errorf("failed to read sheet headers: %w", err)
+		return nil, fmt.Errorf("failed to read sheet headers: %w", err)
 	}
 
 	// If sheet is empty, add headers
 	if len(resp.Values) == 0 {
-		headers := []interface{}{"Project", "Date", "Start Time", "End Time", "Duration", "Notes"}
+		headers := []any{"Project", "Date", "Start Time", "End Time", "Duration", "Notes"}
 		headerRange := fmt.Sprintf("%s!A1:F1", quotedSheetName)
 		headerValueRange := &sheets.ValueRange{
-			Values: [][]interface{}{headers},
+			Values: [][]any{headers},
 		}
-		_, err = srv.Spreadsheets.Values.Update(cfg.SpreadsheetID, headerRange, headerValueRange).
+		_, err = p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, headerRange, headerValueRange).
 			ValueInputOption("USER_ENTERED").Do()
 		if err != nil {
-			return fmt.Errorf("failed to write headers: %w", err)
+			return nil, fmt.Errorf("failed to write headers: %w", err)
 		}
+	}
+
+	// Create initial row with in-progress marker
+	row := []any{
+		p.Session.ProjectName,
+		p.Session.StartTime.Format("2006-01-02"),
+		p.Session.StartTime.Format(time.TimeOnly),
+		"In Progress",
+		time.Time{}.Add(p.Session.CurrentDuration()).Format(time.TimeOnly),
+		p.Session.Notes,
 	}
 
 	appendRange := fmt.Sprintf("%s!A:F", quotedSheetName)
 	valueRange := &sheets.ValueRange{
-		Values: [][]interface{}{row},
+		Values: [][]any{row},
 	}
 
-	_, err = srv.Spreadsheets.Values.Append(cfg.SpreadsheetID, appendRange, valueRange).
+	appendResp, err := p.Srv.Spreadsheets.Values.Append(p.Cfg.SpreadsheetID, appendRange, valueRange).
+		ValueInputOption("USER_ENTERED").
+		InsertDataOption("INSERT_ROWS").
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to append row: %w", err)
+	}
+
+	// Parse the updated range to get the row number
+	// Format is like 'Sheet Name'!A5:F5
+	var rowNum int64
+	fmt.Sscanf(appendResp.Updates.UpdatedRange, "%*[^0-9]%d", &rowNum)
+
+	return &SyncState{RowNumber: rowNum}, nil
+}
+
+// SyncGoogleSheetsRow updates an existing row with current session duration
+func SyncGoogleSheetsRow(ctx context.Context, p GoogleSheetsParams, state *SyncState) error {
+	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
+
+	endTime := p.Session.EndTime()
+
+	var durationCol string
+	if endTime != nil {
+		durationCol = endTime.Format(time.TimeOnly)
+	}
+
+	if endTime == nil {
+		durationCol = "In progress"
+	}
+
+	row := []any{
+		p.Session.ProjectName,
+		p.Session.StartTime.Format("2006-01-02"),
+		p.Session.StartTime.Format(time.TimeOnly),
+		durationCol,
+		time.Time{}.Add(p.Session.CurrentDuration()).Format(time.TimeOnly),
+		p.Session.Notes,
+	}
+
+	updateRange := fmt.Sprintf("%s!A%d:F%d", quotedSheetName, state.RowNumber, state.RowNumber)
+	valueRange := &sheets.ValueRange{
+		Values: [][]any{row},
+	}
+
+	_, err := p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, updateRange, valueRange).
 		ValueInputOption("USER_ENTERED").Do()
 	if err != nil {
-		return fmt.Errorf("failed to append row: %w", err)
+		return fmt.Errorf("failed to update row: %w", err)
 	}
 
 	return nil

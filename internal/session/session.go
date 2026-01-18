@@ -12,11 +12,13 @@ type Session struct {
 	Notes       string
 }
 
-func (s *Session) Duration() (time.Duration, error) {
-	if !s.isEnded() {
-		return 0, fmt.Errorf("session is still in progress")
+// Duration returns the duration from start until now (for in-progress sessions)
+// and duration from start to end for ended sessions
+func (s *Session) CurrentDuration() time.Duration {
+	if s.endTime != nil {
+		return s.endTime.Sub(s.StartTime)
 	}
-	return s.endTime.Sub(s.StartTime), nil
+	return time.Since(s.StartTime)
 }
 
 // SetEndTimer parses the duration string, sets the session end time,
@@ -42,10 +44,6 @@ func (s *Session) SetEndTimer(durationStr string) (<-chan time.Time, error) {
 func (s *Session) Stop() {
 	now := time.Now()
 	s.endTime = &now
-}
-
-func (s *Session) isEnded() bool {
-	return s.endTime != nil
 }
 
 func (s *Session) EndTime() *time.Time {

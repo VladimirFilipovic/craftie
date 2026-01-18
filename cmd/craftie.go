@@ -117,6 +117,20 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 
 	fmt.Printf("Started session for project \"%s\" have fun \n", projectName)
 
+	saveParams := saveSessionParams{
+		cfg:     cfg,
+		session: &session,
+		sheetsParams: sheets.GoogleSheetsParams{
+			Srv:     sheetsClient,
+			Cfg:     cfg.GoogleSheets,
+			Session: &session,
+		},
+	}
+	state := &syncState{}
+
+	// Initial save
+	saveSession(ctx, saveParams, state)
+
 loop:
 	for {
 		select {
@@ -127,37 +141,73 @@ loop:
 			fmt.Println("Session time reached!")
 			break loop
 		case <-syncChan:
-			fmt.Println("Time to sync the session")
-			// sync
+			fmt.Printf("Syncing session (duration: %s)\n", time.Time{}.Add(session.CurrentDuration()).Format(time.TimeOnly))
+			saveSession(ctx, saveParams, state)
 		}
 	}
 
 	session.Stop()
 
-	duration, err := session.Duration()
+	fmt.Println("Session lasted ", time.Time{}.Add(session.CurrentDuration()).Format(time.TimeOnly))
 
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Session lasted ", time.Time{}.Add(duration).Format(time.TimeOnly))
-
-	// save session data
-	if cfg.CSV.Enabled {
-		if err := sheets.SaveToCsv(cfg.CSV.FilePath, &session); err != nil {
-			fmt.Printf("Warning: failed to save session to CSV: %v\n", err)
-		} else {
-			fmt.Printf("Session saved to CSV: %s\n", cfg.CSV.FilePath)
-		}
-	}
-
-	if cfg.GoogleSheets.Enabled {
-		if err := sheets.SaveToGoogleSheets(ctx, sheetsClient, cfg.GoogleSheets, &session); err != nil {
-			fmt.Printf("Warning: failed to save session to Google Sheets: %v\n", err)
-		} else {
-			fmt.Printf("Session saved to Google Sheets: %s\n", cfg.GoogleSheets.SpreadsheetID)
-		}
-	}
+	// Final sync to save end time
+	saveSession(ctx, saveParams, state)
 
 	return nil
+}
+
+type syncState struct {
+	sheets *sheets.SyncState
+	csv    *sheets.CsvSyncState
+}
+
+type saveSessionParams struct {
+	cfg          *config.Config
+	session      *session.Session
+	sheetsParams sheets.GoogleSheetsParams
+}
+
+func saveSession(ctx context.Context, p saveSessionParams, state *syncState) {
+	if p.cfg.CSV.Enabled {
+		saveCsv(p, state)
+	}
+	if p.cfg.GoogleSheets.Enabled {
+		saveGoogleSheets(ctx, p, state)
+	}
+}
+
+func saveCsv(p saveSessionParams, state *syncState) {
+	if state.csv != nil {
+		if err := sheets.SyncCsvRow(state.csv, p.session); err != nil {
+			fmt.Printf("Warning: failed to sync to CSV: %v\n", err)
+		}
+		return
+	}
+
+	csvState, err := sheets.InitCsvRow(p.cfg.CSV.FilePath, p.session)
+	if err != nil {
+		fmt.Printf("Warning: failed to init CSV row: %v\n", err)
+		return
+	}
+	state.csv = csvState
+	fmt.Printf("Session row created in CSV: %s\n", p.cfg.CSV.FilePath)
+}
+
+func saveGoogleSheets(ctx context.Context, p saveSessionParams, state *syncState) {
+	// sheets already initialized
+	if state.sheets != nil {
+		if err := sheets.SyncGoogleSheetsRow(ctx, p.sheetsParams, state.sheets); err != nil {
+			fmt.Printf("Warning: failed to sync to Google Sheets: %v\n", err)
+		}
+		return
+	}
+
+	// first time; need to init
+	sheetsState, err := sheets.InitRow(ctx, p.sheetsParams)
+	if err != nil {
+		fmt.Printf("Warning: failed to init Google Sheets row: %v\n", err)
+		return
+	}
+	state.sheets = sheetsState
+	fmt.Printf("Session row created in Google Sheets (row %d)\n", sheetsState.RowNumber)
 }
