@@ -49,7 +49,7 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
 
 	// Check if sheet has headers
-	readRange := fmt.Sprintf("%s!A1:F1", quotedSheetName)
+	readRange := fmt.Sprintf("%s!A1:G1", quotedSheetName)
 	resp, err := p.Srv.Spreadsheets.Values.Get(p.Cfg.SpreadsheetID, readRange).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read sheet headers: %w", err)
@@ -57,8 +57,8 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 
 	// If sheet is empty, add headers
 	if len(resp.Values) == 0 {
-		headers := []any{"Project", "Date", "Start Time", "End Time", "Duration", "Notes"}
-		headerRange := fmt.Sprintf("%s!A1:F1", quotedSheetName)
+		headers := []any{"Project", "Task", "Date", "Start Time", "End Time", "Duration", "Notes"}
+		headerRange := fmt.Sprintf("%s!A1:G1", quotedSheetName)
 		headerValueRange := &sheets.ValueRange{
 			Values: [][]any{headers},
 		}
@@ -72,6 +72,7 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 	// Create initial row with in-progress marker
 	row := []any{
 		p.Session.ProjectName,
+		p.Session.Task,
 		p.Session.StartTime.Format("2006-01-02"),
 		p.Session.StartTime.Format(time.TimeOnly),
 		"In Progress",
@@ -79,7 +80,7 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 		p.Session.Notes,
 	}
 
-	appendRange := fmt.Sprintf("%s!A:F", quotedSheetName)
+	appendRange := fmt.Sprintf("%s!A:G", quotedSheetName)
 	valueRange := &sheets.ValueRange{
 		Values: [][]any{row},
 	}
@@ -117,6 +118,7 @@ func SyncGoogleSheetsRow(ctx context.Context, p GoogleSheetsParams, state *SyncS
 
 	row := []any{
 		p.Session.ProjectName,
+		p.Session.Task,
 		p.Session.StartTime.Format("2006-01-02"),
 		p.Session.StartTime.Format(time.TimeOnly),
 		durationCol,
@@ -124,7 +126,7 @@ func SyncGoogleSheetsRow(ctx context.Context, p GoogleSheetsParams, state *SyncS
 		p.Session.Notes,
 	}
 
-	updateRange := fmt.Sprintf("%s!A%d:F%d", quotedSheetName, state.RowNumber, state.RowNumber)
+	updateRange := fmt.Sprintf("%s!A%d:G%d", quotedSheetName, state.RowNumber, state.RowNumber)
 	valueRange := &sheets.ValueRange{
 		Values: [][]any{row},
 	}

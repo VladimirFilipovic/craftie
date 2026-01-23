@@ -38,7 +38,7 @@ func InitCsvRow(filePath string, session *session.Session) (*CsvSyncState, error
 
 	// Add headers if empty
 	if len(existingRows) == 0 {
-		headers := []string{"Project", "Date", "Start Time", "End Time", "Duration", "Notes"}
+		headers := []string{"Project", "Task", "Date", "Start Time", "End Time", "Duration", "Notes"}
 		if err := writer.Write(headers); err != nil {
 			return nil, fmt.Errorf("failed to write CSV headers: %w", err)
 		}
@@ -54,6 +54,7 @@ func InitCsvRow(filePath string, session *session.Session) (*CsvSyncState, error
 
 	record := []string{
 		session.ProjectName,
+		session.Task,
 		session.StartTime.Format(strings.ReplaceAll(time.DateOnly, ":", "/")),
 		session.StartTime.Format(time.TimeOnly),
 		"In Progress",
@@ -91,6 +92,7 @@ func SyncCsvRow(state *CsvSyncState, session *session.Session) error {
 
 	record := []string{
 		session.ProjectName,
+		session.Task,
 		session.StartTime.Format(strings.ReplaceAll(time.DateOnly, ":", "/")),
 		session.StartTime.Format(time.TimeOnly),
 		endTimeStr,

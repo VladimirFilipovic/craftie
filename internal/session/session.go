@@ -9,6 +9,7 @@ type Session struct {
 	StartTime   time.Time
 	endTime     *time.Time
 	ProjectName string
+	Task        string
 	Notes       string
 }
 

@@ -57,6 +57,12 @@ func run() int {
 						Usage:    "Session end time duration (e.g., 2h, 30m, 1h30m)",
 						Required: false,
 					},
+					&cli.StringFlag{
+						Name:     "task",
+						Aliases:  []string{"t"},
+						Usage:    "Task description",
+						Required: false,
+					},
 				},
 				Action: startSession,
 			},
@@ -77,6 +83,7 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 	notes := cmd.String("notes")
 	configPath := cmd.String("config")
 	endTimeStr := cmd.String("endtime")
+	task := cmd.String("task")
 
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
@@ -102,6 +109,7 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 		StartTime:   time.Now(),
 		Notes:       notes,
 		ProjectName: projectName,
+		Task:        task,
 	}
 
 	// Set up end timer if provided
@@ -149,6 +157,9 @@ loop:
 	session.Stop()
 
 	fmt.Println("Session lasted ", time.Time{}.Add(session.CurrentDuration()).Format(time.TimeOnly))
+	if session.Task != "" {
+		fmt.Println("Task:", session.Task)
+	}
 
 	// Final sync to save end time
 	saveSession(ctx, saveParams, state)

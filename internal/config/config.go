@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	SessionSyncTime = time.Minute * 1
+	SessionSyncTime = time.Minute * 10
 )
 
 // LoadConfig loads configuration from the specified path or creates default if it doesn't exist
