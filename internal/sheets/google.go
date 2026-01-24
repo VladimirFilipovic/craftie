@@ -3,6 +3,8 @@ package sheets
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/vlad/craftie/internal/config"
@@ -41,7 +43,7 @@ type GoogleSheetsParams struct {
 
 // SyncState tracks the row number for updating an in-progress session
 type SyncState struct {
-	RowNumber int64
+	RowNumber int
 }
 
 // InitRow creates the initial row for an in-progress session
@@ -93,10 +95,12 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 		return nil, fmt.Errorf("failed to append row: %w", err)
 	}
 
-	// Parse the updated range to get the row number
-	// Format is like 'Sheet Name'!A5:F5
-	var rowNum int64
-	fmt.Sscanf(appendResp.Updates.UpdatedRange, "%*[^0-9]%d", &rowNum)
+	var rowNum = 0
+	re := regexp.MustCompile(`![A-Z]+(\d+)`)
+	matches := re.FindStringSubmatch(appendResp.Updates.UpdatedRange)
+	if len(matches) > 1 {
+		rowNum, _ = strconv.Atoi(matches[1])
+	}
 
 	return &SyncState{RowNumber: rowNum}, nil
 }

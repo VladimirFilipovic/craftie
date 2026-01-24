@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug craftie start",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/craftie.go",
+      "args": ["start", "-p", "test-project", "-e", "30m"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug craftie help",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/craftie.go",
+      "args": ["--help"]
+    }
+  ]
+}
