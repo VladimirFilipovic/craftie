@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/vlad/craftie/internal/session"
 )
@@ -52,15 +50,7 @@ func InitCsvRow(filePath string, session *session.Session) (*CsvSyncState, error
 	}
 	rowOffset := stat.Size()
 
-	record := []string{
-		session.ProjectName,
-		session.Task,
-		session.StartTime.Format(strings.ReplaceAll(time.DateOnly, ":", "/")),
-		session.StartTime.Format(time.TimeOnly),
-		"In Progress",
-		time.Time{}.Add(session.CurrentDuration()).Format(time.TimeOnly),
-		session.Notes,
-	}
+	record := SessionToCsvRow(session)
 
 	if err := writer.Write(record); err != nil {
 		return nil, fmt.Errorf("failed to write CSV record: %w", err)
@@ -83,22 +73,7 @@ func SyncCsvRow(state *CsvSyncState, session *session.Session) error {
 		return fmt.Errorf("failed to truncate: %w", err)
 	}
 
-	var endTimeStr string
-	if endTime := session.EndTime(); endTime != nil {
-		endTimeStr = endTime.Format(time.TimeOnly)
-	} else {
-		endTimeStr = "In Progress"
-	}
-
-	record := []string{
-		session.ProjectName,
-		session.Task,
-		session.StartTime.Format(strings.ReplaceAll(time.DateOnly, ":", "/")),
-		session.StartTime.Format(time.TimeOnly),
-		endTimeStr,
-		time.Time{}.Add(session.CurrentDuration()).Format(time.TimeOnly),
-		session.Notes,
-	}
+	record := SessionToCsvRow(session)
 
 	writer := csv.NewWriter(file)
 	if err := writer.Write(record); err != nil {

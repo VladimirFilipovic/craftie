@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"time"
 
 	"github.com/vlad/craftie/internal/config"
 	"github.com/vlad/craftie/internal/session"
@@ -59,10 +58,9 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 
 	// If sheet is empty, add headers
 	if len(resp.Values) == 0 {
-		headers := []any{"Project", "Task", "Date", "Start Time", "End Time", "Duration", "Notes"}
 		headerRange := fmt.Sprintf("%s!A1:G1", quotedSheetName)
 		headerValueRange := &sheets.ValueRange{
-			Values: [][]any{headers},
+			Values: [][]any{HEADERS},
 		}
 		_, err = p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, headerRange, headerValueRange).
 			ValueInputOption("USER_ENTERED").Do()
@@ -71,20 +69,9 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 		}
 	}
 
-	// Create initial row with in-progress marker
-	row := []any{
-		p.Session.ProjectName,
-		p.Session.Task,
-		p.Session.StartTime.Format("2006-01-02"),
-		p.Session.StartTime.Format(time.TimeOnly),
-		"In Progress",
-		time.Time{}.Add(p.Session.CurrentDuration()).Format(time.TimeOnly),
-		p.Session.Notes,
-	}
-
 	appendRange := fmt.Sprintf("%s!A:G", quotedSheetName)
 	valueRange := &sheets.ValueRange{
-		Values: [][]any{row},
+		Values: [][]any{SessionToSheet(p.Session)},
 	}
 
 	appendResp, err := p.Srv.Spreadsheets.Values.Append(p.Cfg.SpreadsheetID, appendRange, valueRange).
@@ -109,30 +96,9 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 func SyncGoogleSheetsRow(ctx context.Context, p GoogleSheetsParams, state *SyncState) error {
 	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
 
-	endTime := p.Session.EndTime()
-
-	var durationCol string
-	if endTime != nil {
-		durationCol = endTime.Format(time.TimeOnly)
-	}
-
-	if endTime == nil {
-		durationCol = "In progress"
-	}
-
-	row := []any{
-		p.Session.ProjectName,
-		p.Session.Task,
-		p.Session.StartTime.Format("2006-01-02"),
-		p.Session.StartTime.Format(time.TimeOnly),
-		durationCol,
-		time.Time{}.Add(p.Session.CurrentDuration()).Format(time.TimeOnly),
-		p.Session.Notes,
-	}
-
 	updateRange := fmt.Sprintf("%s!A%d:G%d", quotedSheetName, state.RowNumber, state.RowNumber)
 	valueRange := &sheets.ValueRange{
-		Values: [][]any{row},
+		Values: [][]any{SessionToSheet(p.Session)},
 	}
 
 	_, err := p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, updateRange, valueRange).
