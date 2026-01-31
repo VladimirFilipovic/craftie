@@ -92,8 +92,6 @@ func startSession(ctx context.Context, cmd *cli.Command) error {
 
 	fmt.Println("🚀 Starting session for project:", projectName)
 	fmt.Println("Configuration loaded")
-	fmt.Println("Notes:", notes)
-	fmt.Println("CFG:", cfg)
 
 	var sheetsClient *googlesheets.Service
 	if cfg.GoogleSheets.Enabled {

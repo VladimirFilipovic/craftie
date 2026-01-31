@@ -1,6 +1,7 @@
 package sheets
 
 import (
+	"slices"
 	"time"
 
 	"github.com/vlad/craftie/internal/session"
@@ -30,10 +31,16 @@ func sessionRecord(s *session.Session) []string {
 }
 
 func SessionToSheet(s *session.Session) []any {
-	sheet := []any{}
+	record := sessionRecord(s)
+	sheet := make([]any, len(record))
+	durationIndex := slices.Index(HEADERS, "Duration")
 
-	for _, value := range sessionRecord(s) {
-		sheet = append(sheet, value)
+	for i, value := range record {
+		if i == durationIndex && s.EndTime() != nil { // Duration column with completed session
+			sheet[i] = `=INDIRECT("E"&ROW())-INDIRECT("D"&ROW())`
+		} else {
+			sheet[i] = value
+		}
 	}
 
 	return sheet
