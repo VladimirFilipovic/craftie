@@ -1,0 +1,26 @@
+{
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Edit(/home/vlad/Documents/craftie/*)",
+      "Write(/home/vlad/Documents/craftie/*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(go run *)",
+      "Bash(go vet *)",
+      "Bash(go fmt *)",
+      "Bash(go mod *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
