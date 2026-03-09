@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/vlad/craftie/internal/config"
+	"github.com/vlad/craftie/internal/keyring"
 	"github.com/vlad/craftie/internal/session"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
@@ -15,7 +16,13 @@ import (
 
 // NewSheetsClient creates a Google Sheets service client.
 func NewSheetsClient(ctx context.Context, credentialsHelper string) (*sheets.Service, error) {
-	credentials, err := GetCredentials(credentialsHelper)
+	keyringSession, err := keyring.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer keyringSession.Close()
+
+	credentials, err := GetCredentials(credentialsHelper, keyringSession)
 	if err != nil {
 		return nil, err
 	}

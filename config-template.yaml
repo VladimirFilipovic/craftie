@@ -27,6 +27,11 @@ notifications:
   # Enable notification sounds
   sound_enabled: true
 
+  # Project directories for shell hook (craftie hook)
+  # projects:
+  #   myproject: "~/Documents/myproject"
+  #   webapp: "~/projects/webapp"
+
 csv:
   # Enable/disable CSV export
   enabled: false

@@ -6,13 +6,13 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/zalando/go-keyring"
+	"github.com/vlad/craftie/internal/keyring"
 )
 
 // GetCredentials fetches Google service account credentials.
 // If credentialsHelper is provided, it will be used to fetch credentials,
 // otherwise falls back to the system keyring.
-func GetCredentials(credentialsHelper string) ([]byte, error) {
+func GetCredentials(credentialsHelper string, keyringSession *keyring.KeyringSession) ([]byte, error) {
 	if credentialsHelper != "" {
 		credentials, err := ExecuteCredentialsHelper(credentialsHelper)
 		if err != nil {
@@ -22,7 +22,7 @@ func GetCredentials(credentialsHelper string) ([]byte, error) {
 	}
 
 	// Fall back to keyring
-	credsStr, err := keyring.Get("craftie", "google-sheets")
+	credsStr, err := keyringSession.Get("craftie", "google-sheets")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials from keyring: %w", err)
 	}
