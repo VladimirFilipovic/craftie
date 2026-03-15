@@ -18,7 +18,6 @@ const (
 // LoadConfig loads configuration from the specified path or creates default if it doesn't exist
 func LoadConfig(cfgPath string) (*Config, error) {
 	if cfgPath == "" {
-		fmt.Println("No config path provided, using the default one")
 		cfgPath = DefaultConfigPath()
 	}
 
@@ -106,35 +105,36 @@ func DefaultConfigPath() string {
 }
 
 type Config struct {
-	GoogleSheets  GoogleSheetsConfig `yaml:"google_sheets" mapstructure:"google_sheets"`
-	Notifications NotificationConfig `yaml:"notifications" mapstructure:"notifications"`
-	Logging       LoggingConfig      `yaml:"logging" mapstructure:"logging"`
-	CSV           CSVConfig          `yaml:"csv" mapstructure:"csv"`
+	GoogleSheets  GoogleSheetsConfig `yaml:"google_sheets"`
+	Notifications NotificationConfig `yaml:"notifications"`
+	Logging       LoggingConfig      `yaml:"logging"`
+	CSV           CSVConfig          `yaml:"csv"`
 }
 
 type GoogleSheetsConfig struct {
-	SpreadsheetID     string `yaml:"spreadsheet_id" mapstructure:"spreadsheet_id"`
-	SheetName         string `yaml:"sheet_name" mapstructure:"sheet_name"`
-	CredentialsHelper string `yaml:"credentials_helper" mapstructure:"credentials_helper"`
+	SpreadsheetID     string `yaml:"spreadsheet_id"`
+	SheetName         string `yaml:"sheet_name"`
+	CredentialsHelper string `yaml:"credentials_helper"`
 	SyncInterval      time.Duration
-	Enabled           bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled           bool `yaml:"enabled"`
 }
 
 type NotificationConfig struct {
-	Enabled          bool          `yaml:"enabled" mapstructure:"enabled"`
-	ReminderInterval time.Duration `yaml:"reminder_interval" mapstructure:"reminder_interval"`
-	SoundEnabled     bool          `yaml:"sound_enabled" mapstructure:"sound_enabled"`
+	Enabled          bool              `yaml:"enabled"`
+	ReminderInterval time.Duration     `yaml:"reminder_interval"`
+	SoundEnabled     bool              `yaml:"sound_enabled"`
+	Projects         map[string]string `yaml:"projects"`
 }
 
 type LoggingConfig struct {
-	Level      string `yaml:"level" mapstructure:"level"`
-	OutputFile string `yaml:"output_file" mapstructure:"output_file"`
+	Level      string `yaml:"level"`
+	OutputFile string `yaml:"output_file"`
 }
 
 // CSVConfig holds CSV file configuration
 type CSVConfig struct {
-	Enabled  bool   `yaml:"enabled" mapstructure:"enabled"`
-	FilePath string `yaml:"file_path" mapstructure:"file_path"`
+	Enabled  bool   `yaml:"enabled"`
+	FilePath string `yaml:"file_path"`
 }
 
 func defaultConfig() *Config {
@@ -157,6 +157,13 @@ func defaultConfig() *Config {
 	}
 }
 
+func expandTilde(homeDir, p string) string {
+	if strings.HasPrefix(p, "~/") {
+		return filepath.Join(homeDir, p[2:])
+	}
+	return p
+}
+
 // expandPaths expands tilde (~) in file paths to the user's home directory
 func (c *Config) expandPaths() error {
 	homeDir, err := os.UserHomeDir()
@@ -164,16 +171,11 @@ func (c *Config) expandPaths() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	if strings.HasPrefix(c.GoogleSheets.CredentialsHelper, "~/") {
-		c.GoogleSheets.CredentialsHelper = filepath.Join(homeDir, c.GoogleSheets.CredentialsHelper[2:])
-	}
-
-	if strings.HasPrefix(c.CSV.FilePath, "~/") {
-		c.CSV.FilePath = filepath.Join(homeDir, c.CSV.FilePath[2:])
-	}
-
-	if strings.HasPrefix(c.Logging.OutputFile, "~/") {
-		c.Logging.OutputFile = filepath.Join(homeDir, c.Logging.OutputFile[2:])
+	c.GoogleSheets.CredentialsHelper = expandTilde(homeDir, c.GoogleSheets.CredentialsHelper)
+	c.CSV.FilePath = expandTilde(homeDir, c.CSV.FilePath)
+	c.Logging.OutputFile = expandTilde(homeDir, c.Logging.OutputFile)
+	for k, v := range c.Notifications.Projects {
+		c.Notifications.Projects[k] = expandTilde(homeDir, v)
 	}
 
 	return nil

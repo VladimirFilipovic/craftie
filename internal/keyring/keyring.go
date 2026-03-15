@@ -76,34 +76,6 @@ func (k *KeyringSession) Get(service, key string) (string, error) {
 	return string(secret.Value), nil
 }
 
-func (k *KeyringSession) Set(service, key, value string) error {
-	collection := k.conn.Object(serviceDest, collection)
-
-	props := map[string]dbus.Variant{
-		"org.freedesktop.Secret.Item.Label": dbus.MakeVariant(service + "/" + key),
-		"org.freedesktop.Secret.Item.Attributes": dbus.MakeVariant(map[string]string{
-			"application": service,
-			"username":    key,
-		}),
-	}
-
-	secret := dbusSecret{
-		Session:     k.session,
-		Parameters:  []byte{},
-		Value:       []byte(value),
-		ContentType: "text/plain",
-	}
-
-	var item dbus.ObjectPath
-	var prompt dbus.ObjectPath
-	// replace=true to update existing items
-	err := collection.Call(collectionIface+".CreateItem", 0, props, secret, true).Store(&item, &prompt)
-	if err != nil {
-		return fmt.Errorf("create item: %w", err)
-	}
-	return nil
-}
-
 func openSession(conn *dbus.Conn) (dbus.ObjectPath, error) {
 	obj := conn.Object(serviceDest, dbus.ObjectPath(servicePath))
 	var algo dbus.Variant

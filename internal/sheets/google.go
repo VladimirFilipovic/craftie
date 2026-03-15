@@ -14,15 +14,23 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-// NewSheetsClient creates a Google Sheets service client.
-func NewSheetsClient(ctx context.Context, credentialsHelper string) (*sheets.Service, error) {
+// GoogleSheetsRecorder implements session.Recorder for Google Sheets
+type GoogleSheetsRecorder struct {
+	client      *sheets.Service
+	cfg         config.GoogleSheetsConfig
+	rowNumber   int
+	initialized bool
+}
+
+// NewGoogleSheetsRecorder creates a new Google Sheets recorder
+func NewGoogleSheetsRecorder(ctx context.Context, cfg config.GoogleSheetsConfig) (*GoogleSheetsRecorder, error) {
 	keyringSession, err := keyring.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer keyringSession.Close()
 
-	credentials, err := GetCredentials(credentialsHelper, keyringSession)
+	credentials, err := GetCredentials(cfg.CredentialsHelper, keyringSession)
 	if err != nil {
 		return nil, err
 	}
@@ -33,34 +41,33 @@ func NewSheetsClient(ctx context.Context, credentialsHelper string) (*sheets.Ser
 	}
 
 	httpClient := jwtConfig.Client(ctx)
-	srv, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
+	client, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sheets service: %w", err)
 	}
 
-	return srv, nil
+	return &GoogleSheetsRecorder{
+		client: client,
+		cfg:    cfg,
+	}, nil
 }
 
-type GoogleSheetsParams struct {
-	Srv     *sheets.Service
-	Cfg     config.GoogleSheetsConfig
-	Session *session.Session
+// Record saves the session to Google Sheets, creating the row on first call
+func (r *GoogleSheetsRecorder) Record(sess *session.Session) error {
+	if r.initialized {
+		return r.update(sess)
+	}
+	return r.init(sess)
 }
 
-// SyncState tracks the row number for updating an in-progress session
-type SyncState struct {
-	RowNumber int
-}
-
-// InitRow creates the initial row for an in-progress session
-func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
-	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
+func (r *GoogleSheetsRecorder) init(sess *session.Session) error {
+	quotedSheetName := fmt.Sprintf("'%s'", r.cfg.SheetName)
 
 	// Check if sheet has headers
 	readRange := fmt.Sprintf("%s!A1:G1", quotedSheetName)
-	resp, err := p.Srv.Spreadsheets.Values.Get(p.Cfg.SpreadsheetID, readRange).Do()
+	resp, err := r.client.Spreadsheets.Values.Get(r.cfg.SpreadsheetID, readRange).Do()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read sheet headers: %w", err)
+		return fmt.Errorf("failed to read sheet headers: %w", err)
 	}
 
 	// If sheet is empty, add headers
@@ -69,46 +76,46 @@ func InitRow(ctx context.Context, p GoogleSheetsParams) (*SyncState, error) {
 		headerValueRange := &sheets.ValueRange{
 			Values: [][]any{HEADERS},
 		}
-		_, err = p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, headerRange, headerValueRange).
+		_, err = r.client.Spreadsheets.Values.Update(r.cfg.SpreadsheetID, headerRange, headerValueRange).
 			ValueInputOption("USER_ENTERED").Do()
 		if err != nil {
-			return nil, fmt.Errorf("failed to write headers: %w", err)
+			return fmt.Errorf("failed to write headers: %w", err)
 		}
 	}
 
 	appendRange := fmt.Sprintf("%s!A:G", quotedSheetName)
 	valueRange := &sheets.ValueRange{
-		Values: [][]any{SessionToSheet(p.Session)},
+		Values: [][]any{SessionToSheet(sess)},
 	}
 
-	appendResp, err := p.Srv.Spreadsheets.Values.Append(p.Cfg.SpreadsheetID, appendRange, valueRange).
+	appendResp, err := r.client.Spreadsheets.Values.Append(r.cfg.SpreadsheetID, appendRange, valueRange).
 		ValueInputOption("USER_ENTERED").
 		InsertDataOption("INSERT_ROWS").
 		Do()
 	if err != nil {
-		return nil, fmt.Errorf("failed to append row: %w", err)
+		return fmt.Errorf("failed to append row: %w", err)
 	}
 
-	var rowNum = 0
 	re := regexp.MustCompile(`![A-Z]+(\d+)`)
 	matches := re.FindStringSubmatch(appendResp.Updates.UpdatedRange)
 	if len(matches) > 1 {
-		rowNum, _ = strconv.Atoi(matches[1])
+		r.rowNumber, _ = strconv.Atoi(matches[1])
 	}
 
-	return &SyncState{RowNumber: rowNum}, nil
+	r.initialized = true
+	fmt.Printf("Session row created in Google Sheets (row %d)\n", r.rowNumber)
+	return nil
 }
 
-// SyncGoogleSheetsRow updates an existing row with current session duration
-func SyncGoogleSheetsRow(ctx context.Context, p GoogleSheetsParams, state *SyncState) error {
-	quotedSheetName := fmt.Sprintf("'%s'", p.Cfg.SheetName)
+func (r *GoogleSheetsRecorder) update(sess *session.Session) error {
+	quotedSheetName := fmt.Sprintf("'%s'", r.cfg.SheetName)
 
-	updateRange := fmt.Sprintf("%s!A%d:G%d", quotedSheetName, state.RowNumber, state.RowNumber)
+	updateRange := fmt.Sprintf("%s!A%d:G%d", quotedSheetName, r.rowNumber, r.rowNumber)
 	valueRange := &sheets.ValueRange{
-		Values: [][]any{SessionToSheet(p.Session)},
+		Values: [][]any{SessionToSheet(sess)},
 	}
 
-	_, err := p.Srv.Spreadsheets.Values.Update(p.Cfg.SpreadsheetID, updateRange, valueRange).
+	_, err := r.client.Spreadsheets.Values.Update(r.cfg.SpreadsheetID, updateRange, valueRange).
 		ValueInputOption("USER_ENTERED").Do()
 	if err != nil {
 		return fmt.Errorf("failed to update row: %w", err)
